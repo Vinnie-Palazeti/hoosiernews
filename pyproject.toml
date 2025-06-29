@@ -1,0 +1,17 @@
+[project]
+name = "news"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.12.3",
+    "bleach>=6.2.0",
+    "feedparser>=6.0.11",
+    "google-api-python-client>=2.165.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.1",
+    "python-dotenv>=1.1.0",
+    "python-fasthtml>=0.12.6",
+    "requests>=2.32.3",
+]

@@ -1,0 +1,13 @@
+static/
+misc/
+.venv/
+assets/
+__pycache__/
+.ipynb_checkpoints/
+.env
+daisyui*
+*.db
+tailwindcss
+exclude.txt
+.DS_Store
+.sesskey
