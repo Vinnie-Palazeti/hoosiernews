@@ -3,7 +3,10 @@ from svgs import svgs
 import random
 import sqlite3
 from datetime import date
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
+from locations import *
+from typing import List, Dict, Optional, Any
+
 
 @dataclass
 class DiegoLocation:
@@ -19,58 +22,65 @@ headers=[
     
     ## htmx
     # Script(src="https://unpkg.com/htmx.org@next/dist/htmx.min.js"),
+    
     Script(src="/static/js/htmx.min.js"),
     Script(src="/static/js/surreal.js"),
     
-    Link(rel="stylesheet", href="/static/css/output.css", type="text/css"), 
-    
-    ## custom css with fade ins and text
-    Link(rel="stylesheet", href="/static/css/custom.css", type="text/css"),
-    
-    # # daisy ## need both
+    ### here for testing... ###
     # Link(href='https://cdn.jsdelivr.net/npm/daisyui@5', rel='stylesheet', type='text/css'),
-    # Script(src='https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4'), ## this is the playCDN. small file but apparently requires JS to build on the fly? 
+    # Script(src='https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4'),
+    ###########################
     
     ## theme-change
-    # Script(src='https://cdn.jsdelivr.net/npm/theme-change@2.0.2/index.js'),
+    # Script(src='https://cdn.jsdelivr.net/npm/theme-change@2.0.2/index.js'), # testing
     Script(src='/static/js/theme-change.js'),
     
     ## leaflet
-    # Link(href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', rel='stylesheet'),
+    # Link(href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', rel='stylesheet'), # testing
     Link(href='/static/css/leaflet.min.css', rel='stylesheet'),
     
+    Link(rel='icon', href='/static/assets/state.svg', type='image/svg+xml'),    
     
-    Link(rel='icon', href='state.svg', type='image/svg+xml'),
+    ## css
+    ## pathing was messed up. static file server was not working correctly
+    ## still unsure if the tailwind exe file will build this correctly while nested in the static/css/... 
+    Link(rel="stylesheet", href="/static/css/output.css", type="text/css"), 
+    Link(rel="stylesheet", href="/static/css/custom.css", type="text/css"), 
     
-    ## not sure this really does anything useful
-    Style()(
-        """
+    ## I don't think this will work anymore because it is not served in the static/ folder ... but not sure everything will build correctly while nested
+    # Link(rel="stylesheet", href="output.css", type="text/css"), 
+    # Link(rel="stylesheet", href="custom.css", type="text/css"),
+    # what a fucking mess
+    
+    Style(
+    """
         .text-wrap-2 {
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-        overflow: hidden;
-        white-space: normal;
-        text-overflow: clip;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            white-space: normal;
+            text-overflow: clip;
         }
         
         .custom-popup {
-        background-color: rgba(255, 255, 255, 0.9);
-        border-radius: 5px;
-        box-shadow: 0 3px 14px rgba(0,0,0,0.4);
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 5px;
+            box-shadow: 0 3px 14px rgba(0,0,0,0.4);
         }  
         
-        /* Add to your CSS */
         .group-touch-active .touch-absolute {
-        position: absolute;
+            position: absolute;
         }
 
         .group-touch-active .touch-opacity-0 {
-        opacity: 0;
+            opacity: 0;
         }
-        """
-    )
+    """
+    ) 
+    
 ]
+
 
 def log_session(req, sess):
     ip = req.client.host
@@ -90,52 +100,14 @@ def log_session(req, sess):
     finally:
         con.close()
         
+
 app = FastHTML(title='Hoosier News', before=log_session, hdrs=headers, default_hdrs=False)
 rt = app.route      
 
+@rt("/static/{full_path:path}")
+def static(full_path: str):
+    return FileResponse(f"static/{full_path}")
 
-@rt("/static/{file_path:path}.{ext:static}")
-def static(file_path: str, ext: str):
-    return FileResponse(f"static/{file_path}.{ext}")
-
-   
-## just put errors underneath
-def diego_form(errors=None):
-    return Div(cls='mx-auto w-full max-w-lg p-4')(
-            Form(id='haveyouseen')(
-                H2('Have you seen Diego?', cls='text-3xl backdrop-blur-sm pb-2'),
-                Fieldset(cls='fieldset  w-full max-w-lg bg-base-100 border border-base-500 p-4 rounded-box text-lg')(
-                    Legend('Details', cls='fieldset-legend'),
-                    Label('Location Name', cls='fieldset-label'),
-                    Input(type='text', placeholder='Antarctica', name ='location', cls='input w-full'),
-                    Label('Date', cls='fieldset-label'),
-                    Input(type='date', name='date_visited', cls='input w-full'),
-                    Label('Proof', cls='fieldset-label'),
-                    Input(type='text', placeholder='Link', name='proof', cls='input w-full'),
-                    Div(cls='flex flex-row gap-4 w-full pt-2')( 
-                        Div(cls='w-1/2')(
-                            Label('Latitude', cls='fieldset-label'),
-                            Div(id='latitude')
-                        ),
-                        Div(cls='w-1/2')(
-                            Label('Longitude', cls='fieldset-label'),
-                            Div(id='longitude')
-                        )
-                    ),
-                    Input(type='hidden', name='latval', id='latval'),
-                    Input(type='hidden', name='lonval', id='lonval'),
-                    Div(cls='mt-6')(
-                        Button('Submit', 
-                            hx_post='/diego-location',
-                            hx_target='#haveyouseen', 
-                            hx_swap='innerHTML',
-                            cls='btn btn-primary btn btn-primary px-8 border-2 border-base-300 shadow-md')
-                    ),
-                    errors             
-                )
-            )
-        )   
-    
 
 @rt('/where-is-diego')
 def get():
@@ -167,95 +139,6 @@ def create_sessions_table(db_path):
     """)
     conn.commit()
 
-    
-def create_locations_table(db_path):
-    """Create the diego_locations table if it doesn't exist"""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS diego_locations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        location TEXT NOT NULL,
-        date_visited TEXT NOT NULL,
-        proof TEXT,
-        latval REAL NOT NULL,
-        lonval REAL NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-    
-    conn.commit()
-    conn.close()   
-    
-
-def truncate_locations_table(db_path):
-    """
-    Delete all rows from the diego_locations table
-    
-    Args:
-        db_path: Path to the SQLite database file
-    
-    Returns:
-        int: Number of rows deleted
-    """
-    # Connect to database
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    # Execute DELETE statement
-    cursor.execute("DELETE FROM diego_locations")
-    
-    # Get number of rows deleted
-    rows_deleted = cursor.rowcount
-    
-    # Commit and close
-    conn.commit()
-    conn.close()
-    
-    return rows_deleted    
-   
-    
-def insert_location(db_path, location_data):
-    """
-    Insert a DiegoLocation object into SQLite database
-    
-    Args:
-        db_path: Path to the SQLite database file
-        location_data: DiegoLocation instance to insert
-    """
-    # Convert dataclass to dictionary
-    data_dict = asdict(location_data)
-    
-    # Convert date object to string for SQLite
-    data_dict['date_visited'] = data_dict['date_visited'].isoformat()
-    
-    # Connect to database
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    # Simple insert statement
-    query = '''
-    INSERT INTO diego_locations 
-    (location, date_visited, proof, latval, lonval) 
-    VALUES 
-    (?, ?, ?, ?, ?)
-    '''
-    # Execute with values from dataclass
-    cursor.execute(query, (
-        data_dict['location'],
-        data_dict['date_visited'],
-        data_dict['proof'],
-        data_dict['latval'],
-        data_dict['lonval']
-    ))
-    
-    # Commit and close
-    conn.commit()
-    conn.close()
-    
-    return cursor.lastrowid    
-    
 @rt('/diego-location')
 def post(d:DiegoLocation):
     create_locations_table("data.db")
@@ -265,22 +148,66 @@ def post(d:DiegoLocation):
     return H1('Thank you for spotting Diego!', cls='text-5xl')
 
 
-def get_posts(rn=0, w=2):
-    q = """
-        with recents  as (
-            select id, title, summary, url, site, email, row_number() over (partition by site order by created_at desc) as rn from posts
-        )
-        select * from recents
-        where rn > ? and rn <= ?
-        order by rn asc
+def get_posts(
+    page: int = 0,
+    per_site: int = 2,
+    sites: Optional[List[str]] = None,
+    db_path: str = "data.db",
+) -> List[Dict[str, Any]]:
     """
-    print((rn*w, (rn+1)*w))
-    with sqlite3.connect('data.db') as con:
-        con.row_factory = sqlite3.Row 
-        cursor = con.cursor()
-        d = cursor.execute(q,(rn*w, (rn+1)*w)).fetchall()
-        random.shuffle(d)
-    return [dict(i) for i in d]
+    Fetches up to `per_site` posts per site, optionally filtering to a given list of sites,
+    and returns them in random order.
+
+    Args:
+        page: zero-based page index (so page=0 returns rn=1…per_site, page=1 returns rn=per_site+1…2*per_site).
+        per_site: number of posts per site per page.
+        sites: if provided, only posts whose `site` is in this list will be considered.
+        db_path: path to your SQLite database file.
+
+    Returns:
+        A list of dicts, each representing one post, shuffled randomly.
+    """
+    # Build optional WHERE … IN (?,?,…) clause
+    params: List[Any] = []
+    where_clause = ""
+    if sites:
+        placeholders = ",".join("?" for _ in sites)
+        where_clause = f"WHERE site IN ({placeholders})"
+        params.extend(sites)
+
+    sql = f"""
+    WITH recents AS (
+        SELECT
+            id, title, summary, url, site, email,
+            ROW_NUMBER() OVER (
+                PARTITION BY site
+                ORDER BY created_at DESC
+            ) AS rn
+        FROM posts
+        {where_clause}
+    )
+    SELECT id, title, summary, url, site, email
+    FROM recents
+    WHERE rn > ? AND rn <= ?
+    ORDER BY site, rn
+    """
+
+    # calculate the rn bounds
+    start_rn = page * per_site
+    end_rn = (page + 1) * per_site
+    params.extend([start_rn, end_rn])
+
+    # execute
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    try:
+        rows = con.execute(sql, params).fetchall()
+    finally:
+        con.close()
+
+    posts = [dict(r) for r in rows]
+    random.shuffle(posts)
+    return posts
 
 def get_post_by_id(id):
     with sqlite3.connect('data.db') as con:
@@ -292,8 +219,7 @@ def get_post_by_id(id):
 def card(title, summary=None, site=None, url=None, email=None, id=None, target='_blank', **kwargs):
     if email:
         url = f'/post/{id}'
-        target=None    
-
+        target=None
     return (
         A(href=url, target=target, cls="group relative block h-52 sm:h-60 lg:h-72")(
             # background
@@ -331,15 +257,15 @@ def toggle():
         ),
         Span()(svgs['moon'])
     )
-     
+    
 def title_bar(diego=None):
     return (
-        Div(cls='flex flex-col sm:flex-row items-center justify-between pt-6 pb-2 gap-2')( 
-            Div(cls='flex items-center')(  
+        Div(cls='flex flex-col sm:flex-row items-center justify-between pt-6 pb-2 gap-2')(
+            Div(cls='flex items-center')(
                 A(href='/')(P('Hoosier News', cls='pl-2 sm:pl-0 text-7xl text-base-content leading-none m-0 backdrop-blur-sm')),
                 Div(cls='pl-2')(svgs['indiana']),
                 toggle()
-            ),
+            ), 
             
             (A(href='/where-is-diego', cls='btn px-8 backdrop-blur-sm mt-10 text-xl self-start sm:self-center mt-2 sm:mt-0')(
                 "Where is Diego?"
@@ -361,7 +287,6 @@ def get(id:int):
 
 @rt('/')
 def get():
-
     return Body()(
         Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
             title_bar(),
@@ -373,8 +298,7 @@ def get():
                 )
             )                 
         ),
-        Script(src='/static/js/touch.js'),
-        
+        Script(src='/static/js/touch.js'),      
     )
     
 @rt('/scroll')
@@ -383,10 +307,15 @@ def post(p:list[int]):
     # or even delete the input after request?
     p=max(p)
     return (
-        ([Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i)) for i in get_posts(rn=p+1)]),
+        ([Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i)) for i in get_posts(page=p+1)]),
         Input(name='p', value=p+1, type='hidden'),
         Div(hx_target='#content', hx_trigger='revealed', hx_swap='beforeend', hx_post='/scroll', hx_on__before_request="this.remove();")      
     )
+
+@rt('/test')
+def post():
+    print('hi')
+
 
 if __name__ == "__main__":
     import uvicorn

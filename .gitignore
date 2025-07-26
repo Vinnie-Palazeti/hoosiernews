@@ -11,3 +11,8 @@ tailwindcss
 exclude.txt
 .DS_Store
 .sesskey
+*.css
+*.txt
+nginx/
+claude.md
+/.claude

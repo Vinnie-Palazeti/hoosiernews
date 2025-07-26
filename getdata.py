@@ -303,6 +303,12 @@ def upsert_posts(db_path: str, data: List[Dict[str, Any]]) -> int:
         CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_unique
         ON posts(site, title, date)
     """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_posts_site_created_at
+          ON posts(site, created_at DESC)
+    """)
+        
     cursor.executemany("""
         INSERT OR IGNORE INTO posts
         (date, site, title, summary, url, content, email, created_at)
