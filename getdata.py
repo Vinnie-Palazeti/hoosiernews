@@ -15,6 +15,7 @@ import smtplib
 from email.message import EmailMessage
 from dotenv import load_dotenv
 from gmail_utils import authenticate_gmail, get_messages_by_label, get_message_content
+from retry import retry
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO,
@@ -59,25 +60,34 @@ RSS_FEEDS = [
     "https://www.wrtv.com/news/local-news.rss"
 ]
 
-def retry(max_attempts: int = 3, delay: int = 5):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            for attempt in range(1, max_attempts+1):
-                try:
-                    result = func(*args, **kwargs)
-                    if result and hasattr(result, 'entries') and result.entries:
-                        return result
-                except Exception as e:
-                    logger.warning("Attempt %d failed for %s: %s", attempt, func.__name__, e)
-                time.sleep(delay)
-            return None
-        return wrapper
-    return decorator
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/115.0.0.0 Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;"
+        "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Referer": "https://www.google.com/",
+    "DNT": "1",  # Do Not Track
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "cross-site",
+    "Sec-Fetch-User": "?1",
+}
 
-@retry()
-def fetch_rss_feed(url: str) -> feedparser.FeedParserDict:
+@retry(tries=3, delay=2)
+def fetch_rss_feed(url: str) -> feedparser.FeedParserDict:    
     logger.info("Fetching RSS feed: %s", url)
-    return feedparser.parse(url)
+    response = requests.get(url, headers=HEADERS, timeout=10)
+    response.raise_for_status()  
+    return feedparser.parse(response.content)
 
 def parse_feed_entries(feed: feedparser.FeedParserDict) -> List[Dict[str, Any]]:
     entries = []
@@ -103,10 +113,12 @@ def parse_feed_entries(feed: feedparser.FeedParserDict) -> List[Dict[str, Any]]:
     logger.info(f"found {len(entries)} entries for RSS: {site}")
     return entries 
 
+@retry(tries=3, delay=2)
 def fetch_nwitimes() -> List[Dict[str, Any]]:
+    
     url = "https://www.nwitimes.com/news/"
     logger.info("Fetching NWItimes page: %s", url)
-    resp = requests.get(url, timeout=10)
+    resp = requests.get(url, timeout=10, headers=HEADERS)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     stories = [a for a in soup.find_all("a", href=True) if ('news/local' in a['href'] or 'news/state-regional' in a['href']) and 'article' in a['href']]
@@ -134,10 +146,11 @@ def fetch_nwitimes() -> List[Dict[str, Any]]:
     logger.info(f"found {len(results)} entries for NWI times")
     return results
 
+@retry(tries=3, delay=2)
 def fetch_courier():
     url="https://www.courierpress.com/news/local-news/"
     logger.info("Fetching Courier & Press page: %s", url)
-    resp = requests.get(url, timeout=10)
+    resp = requests.get(url, timeout=10, headers=HEADERS)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")  
     stories = [a for a in soup.find_all("a", class_="gnt_m_flm_a", href=True) if 'story/news/local/' in a['href']]
@@ -162,10 +175,11 @@ def fetch_courier():
     logger.info(f"found {len(results)} entries for Courier")
     return results
 
+@retry(tries=3, delay=2)
 def fetch_tribstar() -> List[Dict[str, Any]]:
     url = "https://www.tribstar.com/news/local_news/"
     logger.info("Fetching Tribstar page: %s", url)
-    resp = requests.get(url, timeout=10)
+    resp = requests.get(url, timeout=10, headers=HEADERS)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -208,10 +222,11 @@ def fetch_tribstar() -> List[Dict[str, Any]]:
     logger.info(f"found {len(results)} entries for TribStar")
     return results 
 
+@retry(tries=3, delay=2)
 def fetch_indystar() -> List[Dict[str, Any]]:
     url = "https://www.indystar.com/news/"
     logger.info("Fetching IndyStar page: %s", url)
-    resp = requests.get(url, timeout=10)
+    resp = requests.get(url, timeout=10, headers=HEADERS)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     stories = [a for a in soup.find_all("a", href=True) if 'story' in a['href']]
@@ -237,10 +252,11 @@ def fetch_indystar() -> List[Dict[str, Any]]:
     logger.info(f"found {len(results)} entries for IndyStar")
     return results
 
+@retry(tries=3, delay=2)
 def fetch_ibj() -> List[Dict[str, Any]]:
     url = "https://www.ibj.com/latest-publication"
     logger.info("Fetching IBJ page: %s", url)
-    resp = requests.get(url, timeout=10)
+    resp = requests.get(url, timeout=10, headers=HEADERS)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     results = []
@@ -263,6 +279,7 @@ def fetch_ibj() -> List[Dict[str, Any]]:
     logger.info(f"found {len(results)} entries for IBJ")
     return results
 
+@retry(tries=3, delay=2)
 def fetch_emails(max_emails: int = 5) -> List[Dict[str, Any]]:
     service = authenticate_gmail()
     messages = get_messages_by_label(service, os.getenv('GMAIL_LABEL'))
@@ -337,7 +354,6 @@ def main():
     log_contents = log_stream.getvalue()
     if log_contents:
         send_summary_email(log_contents)
-    
 
 if __name__ == "__main__":
     main()
