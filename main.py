@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from locations import *
 from typing import List, Dict, Optional, Any
 
-# rsync -avz -e "ssh -i ~/.ssh/data-hcloud" --exclude-from='exclude.txt' ~/consult/news root@157.180.92.60:/root
 @dataclass
 class DiegoLocation:
     location: str

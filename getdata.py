@@ -82,6 +82,7 @@ HEADERS = {
     "Sec-Fetch-User": "?1",
 }
 
+
 @retry(tries=3, delay=2)
 def fetch_rss_feed(url: str) -> feedparser.FeedParserDict:    
     logger.info("Fetching RSS feed: %s", url)
@@ -115,7 +116,6 @@ def parse_feed_entries(feed: feedparser.FeedParserDict) -> List[Dict[str, Any]]:
 
 @retry(tries=3, delay=2)
 def fetch_nwitimes() -> List[Dict[str, Any]]:
-    
     url = "https://www.nwitimes.com/news/"
     logger.info("Fetching NWItimes page: %s", url)
     resp = requests.get(url, timeout=10, headers=HEADERS)
@@ -336,21 +336,26 @@ def upsert_posts(db_path: str, data: List[Dict[str, Any]]) -> int:
     conn.close()
     return inserted
 
+
+
+
 def main():    
     all_entries: List[Dict[str, Any]] = []
     for url in RSS_FEEDS:
-        feed = fetch_rss_feed(url)
-        all_entries.extend(parse_feed_entries(feed) or [])       
+        try:
+            feed = fetch_rss_feed(url)
+            all_entries.extend(parse_feed_entries(feed) or [])   
+        except:
+            print(url, 'failed!')
+            continue
     all_entries.extend(fetch_indystar())
     all_entries.extend(fetch_ibj())
     all_entries.extend(fetch_emails())
     all_entries.extend(fetch_nwitimes())
     all_entries.extend(fetch_courier())
     all_entries.extend(fetch_tribstar())
-    
     inserted = upsert_posts('data.db', all_entries)
     logger.info("Inserted %d new records", inserted)
-    
     log_contents = log_stream.getvalue()
     if log_contents:
         send_summary_email(log_contents)

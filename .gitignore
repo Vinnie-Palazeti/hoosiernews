@@ -16,3 +16,4 @@ exclude.txt
 nginx/
 claude.md
 /.claude
+systemd/
