@@ -6,6 +6,10 @@ from datetime import date
 from dataclasses import dataclass
 from locations import *
 from typing import List, Dict, Optional, Any
+# https://x.com/theheraldtimes
+# the indiana laywer
+
+
 
 @dataclass
 class DiegoLocation:
@@ -266,9 +270,7 @@ def title_bar(diego=None):
                 toggle()
             ), 
             
-            (A(href='/where-is-diego', cls='btn px-8 backdrop-blur-sm mt-10 text-xl self-start sm:self-center mt-2 sm:mt-0')(
-                "Where is Diego?"
-            )) if not diego else None
+            (A(href='/where-is-diego', cls='btn px-8 backdrop-blur-sm mt-10 text-xl self-start sm:self-center mt-2 sm:mt-0')("Where is Diego?")) if not diego else None
         )
     ) 
 

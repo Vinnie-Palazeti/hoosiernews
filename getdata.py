@@ -1,8 +1,6 @@
 import logging
-import sqlite3
 import html
 import bleach
-import time
 from datetime import datetime
 from typing import List, Dict, Any
 import feedparser
@@ -10,23 +8,195 @@ import requests
 from bs4 import BeautifulSoup
 import os
 import io
-from logging.handlers import SMTPHandler
 import smtplib
 from email.message import EmailMessage
-from dotenv import load_dotenv
-from gmail_utils import authenticate_gmail, get_messages_by_label, get_message_content
 from retry import retry
-load_dotenv()
+import os, pathlib, subprocess, modal
+import orjson, gzip, datetime as dt, tempfile, pathlib
+import base64
+from googleapiclient.discovery import build
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
-
 log_stream = io.StringIO()
 buffer_handler = logging.StreamHandler(log_stream)
 buffer_handler.setLevel(logging.INFO)
 buffer_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 logging.getLogger().addHandler(buffer_handler)
+
+#################### GMAIL UTILS ####################
+
+def save_secret_to_json(secret:str):
+    json_str = os.getenv(secret)
+    if json_str:
+        with open(f'{secret}.json', 'w') as f:
+            f.write(json_str)
+
+def authenticate_gmail():
+    SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+    creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    save_secret_to_json('GMAIL_TOKEN')
+    save_secret_to_json('HN_CREDS')
+    
+    if os.path.exists("GMAIL_TOKEN.json"):
+        creds = Credentials.from_authorized_user_file("GMAIL_TOKEN.json", SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file("HN_CREDS.json", SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open("HN_CREDS.json", "w") as token:
+            token.write(creds.to_json())
+    return build("gmail", "v1", credentials=creds)
+
+def get_messages_by_label(service, labelid):
+    response = service.users().messages().list(userId='me', labelIds=[labelid]).execute()
+    messages = []
+    if 'messages' in response:
+        messages.extend(response['messages'])
+    return messages
+
+def get_message_details(service, msg_id, format='full'):
+    try:
+        message = service.users().messages().get(userId='me', id=msg_id, format=format).execute()
+        return message
+    except Exception as error:
+        print(f'An error occurred: {error}')
+        return None
+
+def get_content_id(part):
+    """Get Content-ID from headers for inline image reference."""
+    headers = part.get('headers', [])
+    for header in headers:
+        if header['name'].lower() == 'content-id':
+            # Strip < and > if present
+            cid = header['value']
+            if cid.startswith('<') and cid.endswith('>'):
+                cid = cid[1:-1]
+            return cid
+    return None
+
+
+def is_image(filename):
+    """Check if a filename is likely an image based on extension."""
+    if not filename:
+        return False
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp']
+    return any(filename.lower().endswith(ext) for ext in image_extensions)
+
+def process_parts(service, user_id, msg_id, parts):
+    """Process message parts to extract text, HTML, and images."""
+    plain_text = ""
+    html_content = ""
+    images = []
+
+    print('PROCESS PARTS!!')
+    
+    for part in parts:
+        mime_type = part.get('mimeType', '')
+
+        # Handle nested parts recursively
+        if 'parts' in part:
+            nested_text, nested_html, nested_images = process_parts(service, user_id, msg_id, part['parts'])
+            plain_text += nested_text
+            html_content += nested_html
+            images.extend(nested_images)
+            continue
+        
+        # Get part body
+        body = part.get('body', {})
+        
+        # Extract content based on MIME type
+        if 'data' in body:
+            data = base64.urlsafe_b64decode(body['data']).decode('utf-8', errors='replace')
+            if 'text/plain' in mime_type:
+                plain_text += data
+            elif 'text/html' in mime_type:
+                html_content += data
+        
+        # Handle attachments (images)
+        if 'attachmentId' in body:
+            filename = part.get('filename', '')
+            if is_image(filename) or 'image/' in mime_type:
+                # Get attachment data
+                attachment = service.users().messages().attachments().get(
+                    userId=user_id, messageId=msg_id, id=body['attachmentId']).execute()
+                
+                # Decode attachment data
+                file_data = base64.urlsafe_b64decode(attachment['data'])
+                
+                # Add to images list
+                images.append({
+                    'filename': filename,
+                    'content_id': get_content_id(part),
+                    'data': file_data,
+                    'mime_type': mime_type
+                })
+    
+    return plain_text, html_content, images
+
+def get_message_content(service, msg_id, user_id='me'):
+    """Get the content of a message including text, HTML, and images."""
+    try:
+        # Get the full message
+        message = service.users().messages().get(userId=user_id, id=msg_id, format='full').execute()
+        
+        payload = message['payload'] ## ['partId', 'mimeType', 'filename', 'headers', 'body']
+        headers = payload.get('headers', [])
+        
+        # Get subject and sender
+        subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
+        sender = next((h['value'] for h in headers if h['name'].lower() == 'from'), 'Unknown Sender')
+        
+        date = next((h['value'] for h in headers if h['name'].lower() == 'date'), 'No Date')
+        # received = next((h['value'] for h in headers if h['name'].lower() == 'received'), 'No Date')
+        
+        ### can get received from here
+        
+        # Initialize variables to hold content
+        plain_text = ""
+        html_content = ""
+        images = []
+        
+        # Extract partsn
+        if 'parts' in payload:
+            print('parts')
+            plain_text, html_content, images = process_parts(service, user_id, msg_id, payload['parts'])
+        else:
+            print('single')
+            body_data = payload.get('body', {}).get('data', '')
+            if body_data:
+                content = base64.urlsafe_b64decode(body_data).decode('utf-8', errors='replace')
+                mime_type = payload.get('mimeType', '')
+                if 'text/plain' in mime_type:
+                    plain_text = content
+                elif 'text/html' in mime_type:
+                    html_content = content
+        
+        return {
+            'id': msg_id,
+            'subject': subject,
+            'sender': sender,
+            'plain_text': plain_text,
+            'html_content': html_content,
+            'images': images,
+            'date':date
+        }
+        
+    except Exception as error:
+        print(f'Error getting message content: {error}')
+        return None
+
+################################################################################
 
 def send_summary_email(body: str):
     msg = EmailMessage()
@@ -60,37 +230,18 @@ RSS_FEEDS = [
     "https://www.wrtv.com/news/local-news.rss"
 ]
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/115.0.0.0 Safari/537.36"
-    ),
-    "Accept": (
-        "text/html,application/xhtml+xml,application/xml;"
-        "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
-    ),
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Referer": "https://www.google.com/",
-    "DNT": "1",  # Do Not Track
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "cross-site",
-    "Sec-Fetch-User": "?1",
-}
 
 
 @retry(tries=3, delay=2)
 def fetch_rss_feed(url: str) -> feedparser.FeedParserDict:    
     logger.info("Fetching RSS feed: %s", url)
-    response = requests.get(url, headers=HEADERS, timeout=10)
-    response.raise_for_status()  
+    response = requests.get(url, timeout=10)
+    response.raise_for_status() 
     return feedparser.parse(response.content)
 
-def parse_feed_entries(feed: feedparser.FeedParserDict) -> List[Dict[str, Any]]:
+def parse_feed_entries(feed: feedparser.FeedParserDict, length:int=None) -> List[Dict[str, Any]]:
+    
+    
     entries = []
     if not feed or not feed.entries:
         return entries
@@ -109,7 +260,7 @@ def parse_feed_entries(feed: feedparser.FeedParserDict) -> List[Dict[str, Any]]:
             'url': entry.get('link'),
             'content': None,
             'email': False,
-            'created_at': datetime.utcnow().isoformat()
+            'created_at': datetime.now().isoformat()
         })
     logger.info(f"found {len(entries)} entries for RSS: {site}")
     return entries 
@@ -118,7 +269,7 @@ def parse_feed_entries(feed: feedparser.FeedParserDict) -> List[Dict[str, Any]]:
 def fetch_nwitimes() -> List[Dict[str, Any]]:
     url = "https://www.nwitimes.com/news/"
     logger.info("Fetching NWItimes page: %s", url)
-    resp = requests.get(url, timeout=10, headers=HEADERS)
+    resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     stories = [a for a in soup.find_all("a", href=True) if ('news/local' in a['href'] or 'news/state-regional' in a['href']) and 'article' in a['href']]
@@ -150,7 +301,7 @@ def fetch_nwitimes() -> List[Dict[str, Any]]:
 def fetch_courier():
     url="https://www.courierpress.com/news/local-news/"
     logger.info("Fetching Courier & Press page: %s", url)
-    resp = requests.get(url, timeout=10, headers=HEADERS)
+    resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")  
     stories = [a for a in soup.find_all("a", class_="gnt_m_flm_a", href=True) if 'story/news/local/' in a['href']]
@@ -161,7 +312,6 @@ def fetch_courier():
         title = a.get_text(strip=True)
         summary  = a["data-c-br"]
         date = href.partition('local/')[-1][:10].replace('/','-')
-        # timestamp = a.find("div", class_="gnt_m_flm_sbt")["data-c-dt"]
         results.append({
             'date': date,
             'site': 'Courier & Press',
@@ -175,11 +325,12 @@ def fetch_courier():
     logger.info(f"found {len(results)} entries for Courier")
     return results
 
+
 @retry(tries=3, delay=2)
 def fetch_tribstar() -> List[Dict[str, Any]]:
     url = "https://www.tribstar.com/news/local_news/"
     logger.info("Fetching Tribstar page: %s", url)
-    resp = requests.get(url, timeout=10, headers=HEADERS)
+    resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -222,11 +373,12 @@ def fetch_tribstar() -> List[Dict[str, Any]]:
     logger.info(f"found {len(results)} entries for TribStar")
     return results 
 
+
 @retry(tries=3, delay=2)
 def fetch_indystar() -> List[Dict[str, Any]]:
     url = "https://www.indystar.com/news/"
     logger.info("Fetching IndyStar page: %s", url)
-    resp = requests.get(url, timeout=10, headers=HEADERS)
+    resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     stories = [a for a in soup.find_all("a", href=True) if 'story' in a['href']]
@@ -252,11 +404,12 @@ def fetch_indystar() -> List[Dict[str, Any]]:
     logger.info(f"found {len(results)} entries for IndyStar")
     return results
 
+
 @retry(tries=3, delay=2)
 def fetch_ibj() -> List[Dict[str, Any]]:
     url = "https://www.ibj.com/latest-publication"
     logger.info("Fetching IBJ page: %s", url)
-    resp = requests.get(url, timeout=10, headers=HEADERS)
+    resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     results = []
@@ -300,53 +453,91 @@ def fetch_emails(max_emails: int = 5) -> List[Dict[str, Any]]:
     logger.info(f"found {len(entries)} entries for Jesse Email")
     return entries
 
-def upsert_posts(db_path: str, data: List[Dict[str, Any]]) -> int:
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS posts (
-            id INTEGER PRIMARY KEY,
-            date TEXT NOT NULL,
-            site TEXT NOT NULL,
-            title TEXT NOT NULL,
-            summary TEXT,
-            url TEXT UNIQUE,
-            content TEXT,
-            email BOOLEAN,
-            created_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_unique
-        ON posts(site, title, date)
-    """)
+def setup_ssh_client():
+    """Set up SSH client to connect to your server"""
+    ssh_dir = pathlib.Path('/root/.ssh')
+    known_hosts = ssh_dir / 'known_hosts'
+    server = os.getenv('SERVER').rpartition('@')[-1]
     
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_posts_site_created_at
-          ON posts(site, created_at DESC)
-    """)
+    # Add your server's host key
+    if not known_hosts.exists():
+        with open(known_hosts, 'w') as f:
+            subprocess.run(['ssh-keyscan', '-H', server], stdout=f, check=True)
+        known_hosts.chmod(0o600)
         
-    cursor.executemany("""
-        INSERT OR IGNORE INTO posts
-        (date, site, title, summary, url, content, email, created_at)
-        VALUES (:date, :site, :title, :summary, :url, :content, :email, :created_at)
-    """, data)
-    inserted = conn.total_changes
-    conn.commit()
-    conn.close()
-    return inserted
+
+def send_file(local_path: str, remote_path: str, local:bool=False):
+    server = os.getenv('SERVER')
+    if local:
+        key_file = os.getenv('SSH_KEY_PATH')
+    else:
+        key_text = os.getenv('SSH_PRIVATE_KEY')
+        if not key_text.endswith('\n'):
+            key_text += '\n'
+        ssh_dir = pathlib.Path.home() / ".ssh"
+        key_file = ssh_dir / "id_rsa"
+        ssh_dir.mkdir(mode=0o700, exist_ok=True)
+        key_file.write_text(key_text)
+        key_file.chmod(0o600)
+         
+    subprocess.run(
+        [
+            "scp",
+            "-i", str(key_file),
+            str(local_path),
+            f"{server}:{remote_path}",
+        ],
+        check=True,
+    )
+
+def _json_default(obj):
+    if isinstance(obj, (dt.datetime, dt.date)):
+        return obj.isoformat() 
+    raise TypeError
+
+def save_jsonl(entries, out_path: pathlib.Path):
+    with gzip.open(out_path, "wb") as f:
+        for row in entries:
+            f.write(orjson.dumps(row, default=_json_default))
+            f.write(b"\n")
 
 
+# from dotenv import load_dotenv
+# load_dotenv()
 
+image = (
+    modal.Image.debian_slim()
+    .pip_install(
+        "bleach",
+        "feedparser", 
+        "requests",
+        "beautifulsoup4",
+        "retry",
+        "orjson",
+        "google-api-python-client",
+        "google-auth",
+        "google-auth-oauthlib",
+        "google-auth-httplib2"        
+    )
+    .apt_install("openssh-client")
+    .run_commands(["mkdir -p /root/.ssh"])
+)
 
-def main():    
+app = modal.App("hoosier-news-getdata", image=image)
+@app.function(
+    secrets=[modal.Secret.from_name("hoosier-news")],
+    schedule=modal.Cron("0 */5 * * *"),
+    timeout=3000,
+)
+def main():
+    setup_ssh_client()
     all_entries: List[Dict[str, Any]] = []
     for url in RSS_FEEDS:
         try:
             feed = fetch_rss_feed(url)
-            all_entries.extend(parse_feed_entries(feed) or [])   
-        except:
-            print(url, 'failed!')
+            all_entries.extend(parse_feed_entries(feed) or [])
+        except Exception as e:
+            print(url, 'failed!\n',e,'\n\n')
             continue
     all_entries.extend(fetch_indystar())
     all_entries.extend(fetch_ibj())
@@ -354,11 +545,13 @@ def main():
     all_entries.extend(fetch_nwitimes())
     all_entries.extend(fetch_courier())
     all_entries.extend(fetch_tribstar())
-    inserted = upsert_posts('data.db', all_entries)
-    logger.info("Inserted %d new records", inserted)
+    fn = f"entries-{datetime.now().isoformat()}.jsonl.gz"
+    tmp_path = pathlib.Path(tempfile.gettempdir()) / fn
+    save_jsonl(all_entries, tmp_path)
+    send_file(tmp_path, f'/root/news/data/{fn}') #  local=True .. probably need to handle with cli better than this
     log_contents = log_stream.getvalue()
     if log_contents:
         send_summary_email(log_contents)
-
+        
 if __name__ == "__main__":
     main()
