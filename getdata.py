@@ -505,6 +505,15 @@ def save_jsonl(entries, out_path: pathlib.Path):
 # from dotenv import load_dotenv
 # load_dotenv()
 
+foos = {
+    'indystar':fetch_indystar,
+    'ibj':fetch_ibj,
+    'emails':fetch_emails,
+    'nwitimes':fetch_nwitimes,
+    'courier':fetch_courier,
+    'tribstar':fetch_tribstar
+}
+
 image = (
     modal.Image.debian_slim()
     .pip_install(
@@ -537,14 +546,14 @@ def main():
             feed = fetch_rss_feed(url)
             all_entries.extend(parse_feed_entries(feed) or [])
         except Exception as e:
-            print(url, 'failed!\n',e,'\n\n')
+            logger.error(f"{url} failed:\n{e}")
             continue
-    all_entries.extend(fetch_indystar())
-    all_entries.extend(fetch_ibj())
-    all_entries.extend(fetch_emails())
-    all_entries.extend(fetch_nwitimes())
-    all_entries.extend(fetch_courier())
-    all_entries.extend(fetch_tribstar())
+    
+    for site, fetch_fn in foos.items():
+        try:
+            all_entries.extend(fetch_fn())
+        except Exception as e:
+            logger.error(f"{site} failed:\n{e}")
     fn = f"entries-{datetime.now().isoformat()}.jsonl.gz"
     tmp_path = pathlib.Path(tempfile.gettempdir()) / fn
     save_jsonl(all_entries, tmp_path)
