@@ -6,6 +6,7 @@ from datetime import date
 from dataclasses import dataclass
 from locations import *
 from typing import List, Dict, Optional, Any
+from starlette.requests import Request
 
 # https://x.com/theheraldtimes
 # the indiana laywer
@@ -41,6 +42,7 @@ headers=[
     
     ## leaflet
     # Link(href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', rel='stylesheet'), # testing
+    # I had to move the market images to the static/css file because I believe the leaflet.min.css went looking for them there...
     Link(href='/static/css/leaflet.min.css', rel='stylesheet'),
     
     Link(rel='icon', href='/static/assets/state.svg', type='image/svg+xml'),    
@@ -84,6 +86,19 @@ headers=[
     
 ]
 
+def create_sessions_table(db_path):
+    # Connect to (or create) the SQLite database
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT,
+        user_agent TEXT,
+        path TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+    conn.commit()
 
 def log_session(req, sess):
     ip = req.client.host
@@ -112,51 +127,12 @@ def static(full_path: str):
     return FileResponse(f"static/{full_path}")
 
 
-@rt('/where-is-diego')
-def get():
-    return(
-        Body()(
-            Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
-                title_bar(diego=True),
-                H1('Where in the world is Diego Morales?', cls='text-5xl py-2 '),
-                Div(id='map', cls='w-full h-[500px]'),
-                diego_form()
-  
-            )    
-        ),
-        Script(src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'),
-        Script(src='/static/js/leaf.js'),
-    )
-    
-def create_sessions_table(db_path):
-    # Connect to (or create) the SQLite database
-    conn = sqlite3.connect(db_path)
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ip TEXT,
-        user_agent TEXT,
-        path TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    conn.commit()
-
-@rt('/diego-location')
-def post(d:DiegoLocation):
-    create_locations_table("data.db")
-    location_id = insert_location("data.db", d)
-    print(f"Inserted location with ID: {location_id}") 
-    
-    return H1('Thank you for spotting Diego!', cls='text-5xl')
-
-
 def get_posts(
     page: int = 0,
     per_site: int = 2,
-    sites: Optional[List[str]] = None,
+    sites: list[str] | None = None,
     db_path: str = "data.db",
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetches up to `per_site` posts per site, optionally filtering to a given list of sites,
     and returns them in random order.
@@ -171,12 +147,15 @@ def get_posts(
         A list of dicts, each representing one post, shuffled randomly.
     """
     # Build optional WHERE … IN (?,?,…) clause
-    params: List[Any] = []
+    params: list[Any] = []
     where_clause = ""
-    if sites:
+    if sites is not None:
+        if len(sites) == 0:
+            return []
         placeholders = ",".join("?" for _ in sites)
         where_clause = f"WHERE site IN ({placeholders})"
         params.extend(sites)
+        print(params)
 
     sql = f"""
     WITH recents AS (
@@ -219,9 +198,13 @@ def get_post_by_id(id):
         post = cursor.execute('select title, site, content from posts where id = ?', (id, )).fetchone()
     return dict(post)    
 
-
-def grid():
-    return Div(id='content', cls='pb-4 gap-4 mx-auto max-w-screen-lg grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))]')
+def list_sites(db_path: str = "data.db") -> list[str]:
+    con = sqlite3.connect(db_path)
+    try:
+        cur = con.execute("SELECT DISTINCT site FROM posts ORDER BY site")
+        return [r[0] for r in cur.fetchall()]
+    finally:
+        con.close()
 
 def card(title, summary=None, site=None, url=None, email=None, id=None, target='_blank', **kwargs):
     if email:
@@ -275,10 +258,8 @@ def title_bar(diego=None):
             ), 
             Div(cls='flex items-center gap-2')(
                 toggle(),
-                (A(
-                    href='/where-is-diego',
-                    cls='btn btn-sm sm:btn-md lg:btn-lg backdrop-blur-sm m-0'
-                )("Where is Diego?")) if not diego else None
+                site_filter(),
+                (A(href='/where-is-diego',cls='btn btn-sm sm:btn-md lg:btn-lg backdrop-blur-sm m-0')("Where is Diego?")) if not diego else None
             ),
             
         )
@@ -297,36 +278,154 @@ def get(id:int):
         ),
     )    
 
+       
+def grid():
+    return Div(id='content', cls='pb-4 gap-4 mx-auto max-w-screen-lg grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))]')
+
+## if I had a user store I could set their defaults..
 @rt('/')
 def get():
     return Body()(
         Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
-            title_bar(),
-            Form()(
+            Form(id='feed')(
+            title_bar(),                
             Div(cls='mx-auto font-sans antialiased h-full w-full')(
                 grid()(*[Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i)) for i in get_posts()]),
                 Input(id='p', name='p', value=1, type='hidden'),
-                Div(cls='h-10', hx_target='#content', hx_trigger='revealed', hx_swap='beforeend', hx_post='/scroll', hx_on__before_request="this.remove();")
+                Div(cls='h-10', hx_target='#content', hx_trigger='revealed', hx_swap='beforeend', hx_post='/scroll', hx_include='#feed', hx_on__before_request="this.remove();")
                 )
             )                 
         ),
-        Script(src='/static/js/touch.js'),      
+        Script(src='/static/js/touch.js'),
     )
     
+def scroll_sentinel():
+    return Div(
+        id='scroll-sentinel',
+        cls='h-10',
+        hx_target='#content',
+        hx_trigger='revealed',
+        hx_swap='beforeend',
+        hx_post='/scroll',
+        hx_include='#feed',
+        hx_on__before_request="this.remove();"   # removes itself before the fetch
+    )
+    
+@rt('/filter')
+async def post(req: Request):
+    form = await req.form()
+    sites = form.getlist('sites')
+    p = 0
+    cards = [
+        Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i))
+        for i in get_posts(page=p, sites=sites)
+    ]
+    print(len(cards))
+    # Build children list
+    children = [
+        *cards,
+        Input(id='p', name='p', value=p, type='hidden'),
+    ]
+    if cards:  # only add sentinel if there was something to load
+        children.append(scroll_sentinel())
+    else:
+        children.append(Div(cls='py-8 text-center text-sm opacity-60')('No posts for these filters.'))
+    
+    return Div(
+        id='content',
+        cls='pb-4 gap-4 mx-auto max-w-screen-lg grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))]'
+    )(*children)
+    
+    
 @rt('/scroll')
-def post(p:list[int]):
-    # this is a workaround because I can't figure out how to send just a single number
-    # or even delete the input after request?
-    p=max(p)
+async def post(req: Request):
+    form = await req.form()
+    sites = form.getlist('sites')
+    p_vals = [i for i in form.getlist('p') if i != ''] ## empty values on filter
+    try:
+        p = max(map(int, p_vals))
+    except ValueError:
+        print('error!')
+        p = 0
+    next_page = p + 1
+    new_cards = [
+        Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i))
+        for i in get_posts(page=next_page, sites=sites)
+    ]
+    print(len(new_cards))
+    
+    if not new_cards:
+        # Return nothing -> the old sentinel already removed itself.
+        # No new sentinel means no more requests (clean stop).
+        return ()
+
+    # Otherwise append new p + a fresh sentinel
     return (
-        ([Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i)) for i in get_posts(page=p+1)]),
-        Input(name='p', value=p+1, type='hidden'),
-        Div(hx_target='#content', hx_trigger='revealed', hx_swap='beforeend', hx_post='/scroll', hx_on__before_request="this.remove();")      
+        new_cards,
+        Input(name='p', value=next_page, type='hidden'),
+        scroll_sentinel(),
     )
 
-@rt('/test')
-def post():
-    print('hi')
+
+
+def site_filter():
+    sites = list_sites()
+    print(sites)
+    # Each checkbox posts the whole form on change, replacing #content
+    return Div(cls='flex items-center gap-2')(
+        Button('Sites', popovertarget='popover-1', style='anchor-name:--anchor-1', type='button', cls='btn'),
+        Ul(popover=True, id='popover-1', style='position-anchor:--anchor-1',
+           cls='dropdown menu w-52 rounded-box bg-base-100 shadow-sm')(
+            *[
+                Li(
+                    Label(cls='label gap-2')(
+                        Input(
+                            type='checkbox',
+                            name='sites',
+                            value=s,                # IMPORTANT: value carries the site
+                            checked='checked',      # default: include all
+                            cls='checkbox',
+                            # post on change, replace just the feed content
+                            hx_post='/filter',
+                            hx_trigger='change',
+                            hx_target='#content',
+                            hx_swap='outerHTML',
+                            # include ALL current form fields (p, sites, etc.)
+                            hx_include='#feed'
+                        ),
+                        s
+                    )
+                ) for s in sites
+            ]
+        )
+    )
+    
+
+
+@rt('/where-is-diego')
+def get():
+    return(
+        Body()(
+            Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
+                title_bar(diego=True),
+                H1('Where in the world is Diego Morales?', cls='text-5xl py-2 '),
+                Div(id='map', cls='w-full h-[500px]'),
+                diego_form()
+  
+            )    
+        ),
+        Script(src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'),
+        Script(src='/static/js/leaf.js'),
+    )
+    
+
+@rt('/diego-location')
+def post(d:DiegoLocation):
+    create_locations_table("data.db")
+    location_id = insert_location("data.db", d)
+    print(f"Inserted location with ID: {location_id}") 
+    return H1('Thank you for spotting Diego!', cls='text-5xl')
+    
 
 
 if __name__ == "__main__":
