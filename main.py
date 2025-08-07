@@ -6,6 +6,7 @@ from datetime import date
 from dataclasses import dataclass
 from locations import *
 from typing import List, Dict, Optional, Any
+
 # https://x.com/theheraldtimes
 # the indiana laywer
 # https://indianaeconomicdigest.net/Content/Default/Major-Indiana-News/-3/5308
@@ -53,7 +54,6 @@ headers=[
     ## I don't think this will work anymore because it is not served in the static/ folder ... but not sure everything will build correctly while nested
     # Link(rel="stylesheet", href="output.css", type="text/css"), 
     # Link(rel="stylesheet", href="custom.css", type="text/css"),
-    # what a fucking mess
     
     Style(
     """
@@ -218,39 +218,43 @@ def get_post_by_id(id):
         cursor = con.cursor()
         post = cursor.execute('select title, site, content from posts where id = ?', (id, )).fetchone()
     return dict(post)    
-    
+
+
+def grid():
+    return Div(id='content', cls='pb-4 gap-4 mx-auto max-w-screen-lg grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))]')
+
 def card(title, summary=None, site=None, url=None, email=None, id=None, target='_blank', **kwargs):
     if email:
         url = f'/post/{id}'
         target=None
     return (
-        A(href=url, target=target, cls="group relative block h-52 sm:h-60 lg:h-72")(
+        A(href=url, target=target, cls="group relative block h-52 sm:h-52 lg:h-60")(
             # background
             Span(cls=f"absolute inset-0 border-4 border-dashed"),
 
             ## background white here is for the card bg-white 
-            Div(cls="bg-base-100 min-w-[300px] relative flex h-full transform items-end border-4 transition-transform group-hover:-translate-x-2 group-hover:-translate-y-2 group-[.touch-active]:-translate-x-2 group-[.touch-active]:-translate-y-2")(
+            Div(cls="bg-base-100 relative flex h-full transform items-end border-4 transition-transform group-hover:-translate-x-2 group-hover:-translate-y-2 group-[.touch-active]:-translate-x-2 group-[.touch-active]:-translate-y-2")(
                 
-                Div(cls='sm:h-4/5 p-4 !pt-0 transition-opacity group-hover:absolute group-hover:opacity-0 group-[.touch-active]:absolute group-[.touch-active]:opacity-0 sm:p-6 lg:p-8')(
-                    Div(cls='flex flex-row items-center gap-4')(svgs.get(site), H1(site, cls='font-medium text-3xl text-wrap-2')),
-                    Div(cls='mt-4')(H2(cls="font-medium text-xl sm:text-2xl sm:line-clamp-3 lg:line-clamp-4 ")(title))
+                ## this is what shows by default:
+                Div(cls='h-9/10 p-2 !pt-0 sm:p-6 lg:p-8 transition-opacity group-hover:absolute group-hover:opacity-0 group-[.touch-active]:absolute group-[.touch-active]:opacity-0')(
+                    Div(cls='flex flex-row items-center gap-4')(svgs.get(site), H1(site, cls='font-medium text-2xl text-wrap-2')),
+                    Div(cls='mt-2')(H2(cls="font-medium text-xl sm:line-clamp-3 lg:line-clamp-4 ")(title))
                 ),
-                
-                Div(cls="absolute p-4 opacity-0 transition-opacity group-hover:relative group-hover:opacity-100 group-[.touch-active]:relative group-[.touch-active]:opacity-100 sm:p-8 lg:p-8")(
-                    H2(cls="font-medium text-xl sm:text-2xl")(site),
-                    P(cls="mt-2 text-md sm:text-lg line-clamp-4")(summary),
+                # this is what shows when hovered:
+                ### if I make the hovered text smaller.. then it should be ok
+                Div(cls="absolute p-2 sm:p-8 lg:p-8 opacity-0 transition-opacity group-hover:relative group-hover:opacity-100 group-[.touch-active]:relative group-[.touch-active]:opacity-100")(
+                    H2(cls="font-medium text-xl lg:text-2xl")(site),
+                    P(cls="mt-2 text-md sm:text-lg line-clamp-3")(summary),
                     P(cls='mt-4 font-bold')('Read more')
                 )
             )
         )                
     )
 
-def grid():
-    return Div(id='content', cls='pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4')
 
 def toggle():
     ## tried to get a post call to swap the svgs.. couldn't get it to work
-    return Div(cls='mt-10 flex flex-row gap-2 backdrop-blur-sm')(
+    return Div(cls='m-0 flex flex-row gap-2 backdrop-blur-sm')(
         Span()(svgs['sun']),
         Div(cls='inline-block w-10')(
             Span(data_toggle_theme='dark', data_act_class='pl-4', 
@@ -263,16 +267,23 @@ def toggle():
     
 def title_bar(diego=None):
     return (
-        Div(cls='flex flex-col sm:flex-row items-center justify-between pt-6 pb-2 gap-2')(
+        Div(cls='mx-auto max-w-screen-lg w-full flex flex-col sm:flex-row items-center justify-between pt-6 pb-2 gap-2')(
             Div(cls='flex items-center')(
-                A(href='/')(P('Hoosier News', cls='pl-2 sm:pl-0 text-7xl text-base-content leading-none m-0 backdrop-blur-sm')),
+                A(href='/', cls='flex items-center')(
+                    P('Hoosier News', cls='pl-2 sm:pl-0 text-3xl xs:text-4xl sm:text-5xl md:text-6xl text-base-content leading-none m-0 backdrop-blur-sm whitespace-nowrap')),
                 Div(cls='pl-2')(svgs['indiana']),
-                toggle()
             ), 
+            Div(cls='flex items-center gap-2')(
+                toggle(),
+                (A(
+                    href='/where-is-diego',
+                    cls='btn btn-sm sm:btn-md lg:btn-lg backdrop-blur-sm m-0'
+                )("Where is Diego?")) if not diego else None
+            ),
             
-            (A(href='/where-is-diego', cls='btn px-8 backdrop-blur-sm mt-10 text-xl self-start sm:self-center mt-2 sm:mt-0')("Where is Diego?")) if not diego else None
         )
-    ) 
+    )
+    
 
 @rt('/post/{id}')
 def get(id:int):
