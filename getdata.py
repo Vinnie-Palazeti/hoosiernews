@@ -539,6 +539,7 @@ app = modal.App("hoosier-news-getdata", image=image)
     timeout=3000,
 )
 def main():
+    logger.error(f"starting...")
     setup_ssh_client()
     all_entries: List[Dict[str, Any]] = []
     for url in RSS_FEEDS:
