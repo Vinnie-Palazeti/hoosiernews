@@ -7,11 +7,14 @@ from dataclasses import dataclass
 from locations import *
 from typing import List, Dict, Optional, Any
 from starlette.requests import Request
+from starlette.middleware.sessions import SessionMiddleware
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # https://x.com/theheraldtimes
 # the indiana laywer
 # https://indianaeconomicdigest.net/Content/Default/Major-Indiana-News/-3/5308
-
 
 @dataclass
 class DiegoLocation:
@@ -121,6 +124,8 @@ def log_session(req, sess):
 
 app = FastHTML(title='Hoosier News', before=log_session, hdrs=headers, default_hdrs=False)
 rt = app.route      
+
+app.add_middleware(SessionMiddleware, secret_key=os.environ['SESSION_SECRET'])
 
 @rt("/static/{full_path:path}")
 def static(full_path: str):
@@ -248,7 +253,7 @@ def toggle():
         Span()(svgs['moon'])
     )
     
-def title_bar(diego=None):
+def title_bar(req: Request={}, diego=None):
     return (
         Div(cls='mx-auto max-w-screen-lg w-full flex flex-col sm:flex-row items-center justify-between pt-6 pb-2 gap-2')(
             Div(cls='flex items-center')(
@@ -258,25 +263,12 @@ def title_bar(diego=None):
             ), 
             Div(cls='flex items-center gap-2')(
                 toggle(),
-                site_filter(),
+                site_filter(req=req),
                 (A(href='/where-is-diego',cls='btn btn-sm sm:btn-md lg:btn-lg backdrop-blur-sm m-0')("Where is Diego?")) if not diego else None
             ),
             
         )
     )
-    
-
-@rt('/post/{id}')
-def get(id:int):
-    post = get_post_by_id(id)
-    
-    return Body()(
-        Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
-            title_bar(), 
-            NotStr(post.get('content'))
-            
-        ),
-    )    
 
        
 def grid():
@@ -284,13 +276,16 @@ def grid():
 
 ## if I had a user store I could set their defaults..
 @rt('/')
-def get():
+def get(req: Request):
+    # Default: all sites
+    sites = req.session.get('sites', list_sites())
+        
     return Body()(
         Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
             Form(id='feed')(
-            title_bar(),                
+            title_bar(req),                
             Div(cls='mx-auto font-sans antialiased h-full w-full')(
-                grid()(*[Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i)) for i in get_posts()]),
+                grid()(*[Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i)) for i in get_posts(sites=sites)]),
                 Input(id='p', name='p', value=1, type='hidden'),
                 Div(cls='h-10', hx_target='#content', hx_trigger='revealed', hx_swap='beforeend', hx_post='/scroll', hx_include='#feed', hx_on__before_request="this.remove();")
                 )
@@ -315,6 +310,10 @@ def scroll_sentinel():
 async def post(req: Request):
     form = await req.form()
     sites = form.getlist('sites')
+    
+    # save sites in session..
+    req.session['sites'] = sites
+    
     p = 0
     cards = [
         Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i))
@@ -366,41 +365,54 @@ async def post(req: Request):
         scroll_sentinel(),
     )
 
-
-
-def site_filter():
-    sites = list_sites()
-    print(sites)
-    # Each checkbox posts the whole form on change, replacing #content
+def site_filter(req: Request):
+    all_sites = list_sites()
+    selected_sites = req.session.get('sites', all_sites)
     return Div(cls='flex items-center gap-2')(
-        Button('Sites', popovertarget='popover-1', style='anchor-name:--anchor-1', type='button', cls='btn'),
+        Button('Sites', popovertarget='popover-1', style='anchor-name:--anchor-1', type='button', cls='btn btn-sm sm:btn-md lg:btn-lg backdrop-blur-sm m-0'),
         Ul(popover=True, id='popover-1', style='position-anchor:--anchor-1',
-           cls='dropdown menu w-52 rounded-box bg-base-100 shadow-sm')(
+            # key bits: block + columns-2 + wider + scrollable
+            cls=(
+                'dropdown menu rounded-box bg-base-100 shadow-sm p-2'
+                'block columns-2 w-[28rem] max-h-96 overflow-auto gap-x-4 gap-y-2'
+            )
+        )(
             *[
-                Li(
-                    Label(cls='label gap-2')(
+                Li(cls='break-inside-avoid mb-2 rounded-lg has-[:checked]:bg-base-300 has-[:checked]:text-base-content')(
+                    Label(cls='label gap-2 w-full cursor-pointer')(
                         Input(
                             type='checkbox',
                             name='sites',
-                            value=s,                # IMPORTANT: value carries the site
-                            checked='checked',      # default: include all
-                            cls='checkbox',
-                            # post on change, replace just the feed content
+                            value=s,
+                            checked='checked' if s in selected_sites else None,
+                            cls='checkbox peer',
                             hx_post='/filter',
                             hx_trigger='change',
                             hx_target='#content',
                             hx_swap='outerHTML',
-                            # include ALL current form fields (p, sites, etc.)
-                            hx_include='#feed'
+                            hx_include='#feed',
                         ),
-                        s
+                        Span(s, cls='px-2 py-1 rounded-lg')
                     )
-                ) for s in sites
+                )
+                for s in all_sites
             ]
         )
     )
+
     
 
+@rt('/post/{id}')
+def get(id:int):
+    post = get_post_by_id(id)
+    
+    return Body()(
+        Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
+            title_bar(), 
+            NotStr(post.get('content'))
+            
+        ),
+    )    
 
 @rt('/where-is-diego')
 def get():
