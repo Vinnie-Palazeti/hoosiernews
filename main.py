@@ -12,9 +12,6 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-# https://x.com/theheraldtimes
-# the indiana laywer
-# https://indianaeconomicdigest.net/Content/Default/Major-Indiana-News/-3/5308
 
 @dataclass
 class DiegoLocation:
@@ -56,10 +53,6 @@ headers=[
     Link(rel="stylesheet", href="/static/css/output.css", type="text/css"), 
     Link(rel="stylesheet", href="/static/css/custom.css", type="text/css"), 
     
-    ## I don't think this will work anymore because it is not served in the static/ folder ... but not sure everything will build correctly while nested
-    # Link(rel="stylesheet", href="output.css", type="text/css"), 
-    # Link(rel="stylesheet", href="custom.css", type="text/css"),
-    
     Style(
     """
         .text-wrap-2 {
@@ -85,7 +78,15 @@ headers=[
             opacity: 0;
         }
     """
-    ) 
+    ),
+    Script(_async=True, src=f'https://www.googletagmanager.com/gtag/js?id={os.getenv("GOOGLE_ANALYTICS_ID")}'),
+    Script(
+        f"""
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){{dataLayer.push(arguments);}}
+        gtag('js', new Date());
+        gtag('config', '{os.getenv("GOOGLE_ANALYTICS_ID")}');        
+    """)
     
 ]
 
@@ -120,17 +121,14 @@ def log_session(req, sess):
         pass
     finally:
         con.close()
-        
 
 app = FastHTML(title='Hoosier News', before=log_session, hdrs=headers, default_hdrs=False)
 rt = app.route      
-
 app.add_middleware(SessionMiddleware, secret_key=os.environ['SESSION_SECRET'])
 
 @rt("/static/{full_path:path}")
 def static(full_path: str):
     return FileResponse(f"static/{full_path}")
-
 
 def get_posts(
     page: int = 0,
@@ -151,7 +149,7 @@ def get_posts(
     Returns:
         A list of dicts, each representing one post, shuffled randomly.
     """
-    # Build optional WHERE … IN (?,?,…) clause
+    
     params: list[Any] = []
     where_clause = ""
     if sites is not None:
@@ -160,7 +158,6 @@ def get_posts(
         placeholders = ",".join("?" for _ in sites)
         where_clause = f"WHERE site IN ({placeholders})"
         params.extend(sites)
-        print(params)
 
     sql = f"""
     WITH recents AS (
@@ -263,20 +260,66 @@ def title_bar(req: Request={}, diego=None):
             ), 
             Div(cls='flex items-center gap-2')(
                 toggle(),
-                site_filter(req=req),
+                site_filter(req=req) if not diego else None,
                 (A(href='/where-is-diego',cls='btn btn-sm sm:btn-md lg:btn-lg backdrop-blur-sm m-0')("Where is Diego?")) if not diego else None
             ),
             
         )
     )
 
-       
+def site_filter(req: Request):
+    all_sites = list_sites()
+    selected_sites = req.session.get('sites', all_sites)
+    return Div(cls='flex items-center gap-2')(
+        Button('Sites', popovertarget='popover-1', style='anchor-name:--anchor-1', type='button', cls='btn btn-sm sm:btn-md lg:btn-lg backdrop-blur-sm m-0'),
+        Ul(popover=True, id='popover-1', style='position-anchor:--anchor-1',
+            # key bits: block + columns-2 + wider + scrollable
+            cls=(
+                'dropdown menu rounded-box bg-base-100 shadow-sm p-2 '
+                'w-[24rem] max-h-96 overflow-auto'
+            )
+        )(
+            *[
+                Li(cls='break-inside-avoid mb-2 rounded-lg has-[:checked]:bg-base-300 has-[:checked]:text-base-content')(
+                    Label(cls='label gap-2 w-full cursor-pointer')(
+                        Input(
+                            type='checkbox',
+                            name='sites',
+                            value=s,
+                            checked='checked' if s in selected_sites else None,
+                            cls='checkbox peer',
+                            hx_post='/filter',
+                            hx_trigger='change',
+                            hx_target='#content',
+                            hx_swap='outerHTML',
+                            hx_include='#feed',
+                        ),
+                        Span(s, cls='px-2 py-1 rounded-lg')
+                    )
+                )
+                for s in all_sites
+            ]
+        )
+    )
+    
+def scroll_sentinel():
+    return Div(
+        id='scroll-sentinel',
+        cls='h-10',
+        hx_target='#content',
+        hx_trigger='revealed',
+        hx_swap='beforeend',
+        hx_post='/scroll',
+        hx_include='#feed',
+        hx_on__before_request="this.remove();"   # removes itself before the fetch
+    )   
+ 
 def grid():
     return Div(id='content', cls='pb-4 gap-4 mx-auto max-w-screen-lg grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))]')
 
 ## if I had a user store I could set their defaults..
 @rt('/')
-def get(req: Request):
+async def get(req: Request):
     # Default: all sites
     sites = req.session.get('sites', list_sites())
         
@@ -294,17 +337,11 @@ def get(req: Request):
         Script(src='/static/js/touch.js'),
     )
     
-def scroll_sentinel():
-    return Div(
-        id='scroll-sentinel',
-        cls='h-10',
-        hx_target='#content',
-        hx_trigger='revealed',
-        hx_swap='beforeend',
-        hx_post='/scroll',
-        hx_include='#feed',
-        hx_on__before_request="this.remove();"   # removes itself before the fetch
-    )
+@rt('/potholes')
+async def get(req: Request):
+    ## an actually working pothole viewer
+    pass
+    
     
 @rt('/filter')
 async def post(req: Request):
@@ -319,7 +356,6 @@ async def post(req: Request):
         Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i))
         for i in get_posts(page=p, sites=sites)
     ]
-    print(len(cards))
     # Build children list
     children = [
         *cards,
@@ -351,7 +387,7 @@ async def post(req: Request):
         Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i))
         for i in get_posts(page=next_page, sites=sites)
     ]
-    print(len(new_cards))
+    # print(len(new_cards))
     
     if not new_cards:
         # Return nothing -> the old sentinel already removed itself.
@@ -365,61 +401,27 @@ async def post(req: Request):
         scroll_sentinel(),
     )
 
-def site_filter(req: Request):
-    all_sites = list_sites()
-    selected_sites = req.session.get('sites', all_sites)
-    return Div(cls='flex items-center gap-2')(
-        Button('Sites', popovertarget='popover-1', style='anchor-name:--anchor-1', type='button', cls='btn btn-sm sm:btn-md lg:btn-lg backdrop-blur-sm m-0'),
-        Ul(popover=True, id='popover-1', style='position-anchor:--anchor-1',
-            # key bits: block + columns-2 + wider + scrollable
-            cls=(
-                'dropdown menu rounded-box bg-base-100 shadow-sm p-2'
-                'block columns-2 w-[28rem] max-h-96 overflow-auto gap-x-4 gap-y-2'
-            )
-        )(
-            *[
-                Li(cls='break-inside-avoid mb-2 rounded-lg has-[:checked]:bg-base-300 has-[:checked]:text-base-content')(
-                    Label(cls='label gap-2 w-full cursor-pointer')(
-                        Input(
-                            type='checkbox',
-                            name='sites',
-                            value=s,
-                            checked='checked' if s in selected_sites else None,
-                            cls='checkbox peer',
-                            hx_post='/filter',
-                            hx_trigger='change',
-                            hx_target='#content',
-                            hx_swap='outerHTML',
-                            hx_include='#feed',
-                        ),
-                        Span(s, cls='px-2 py-1 rounded-lg')
-                    )
-                )
-                for s in all_sites
-            ]
-        )
-    )
+
 
     
-
 @rt('/post/{id}')
-def get(id:int):
+def get(id:int, req: Request):
     post = get_post_by_id(id)
     
     return Body()(
         Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
-            title_bar(), 
+            title_bar(req), 
             NotStr(post.get('content'))
             
         ),
     )    
 
 @rt('/where-is-diego')
-def get():
+def get(req:Request):
     return(
         Body()(
             Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
-                title_bar(diego=True),
+                title_bar(diego=True, req=req),
                 H1('Where in the world is Diego Morales?', cls='text-5xl py-2 '),
                 Div(id='map', cls='w-full h-[500px]'),
                 diego_form()

@@ -19,6 +19,8 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 
+from urllib.parse import urljoin
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 log_stream = io.StringIO()
@@ -241,7 +243,6 @@ def fetch_rss_feed(url: str) -> feedparser.FeedParserDict:
 
 def parse_feed_entries(feed: feedparser.FeedParserDict, length:int=None) -> List[Dict[str, Any]]:
     
-    
     entries = []
     if not feed or not feed.entries:
         return entries
@@ -264,6 +265,118 @@ def parse_feed_entries(feed: feedparser.FeedParserDict, length:int=None) -> List
         })
     logger.info(f"found {len(entries)} entries for RSS: {site}")
     return entries 
+
+
+@retry(tries=3, delay=2)
+def fetch_heraldtimes() -> List[Dict[str, Any]]:
+    url = "https://www.heraldtimesonline.com/news/local/"
+    logger.info("Fetching Herald Times page: %s", url)
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    stories = [a for a in soup.find_all("a", href=True) if 'news/local' in a['href']]
+    results = []
+    found = []
+    for a in stories:
+        href = a.get('href')
+        text = a.get_text(strip=True)
+        summary = a.get("data-c-br", text).strip()
+        date = href.partition('local/')[-1][:10].replace('/','-')
+        try:
+            date = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            date = datetime.now().strftime('%Y-%m-%d')
+        if text == '':
+            continue
+        if href in found:
+            continue
+        else:
+            found.append(href)     
+               
+        results.append({
+            'date': date,
+            'site': 'Herald Times',
+            'title': text,
+            'summary': summary,
+            'url': requests.compat.urljoin(url, href),
+            'content': None,
+            'email': False,
+            'created_at': datetime.now().isoformat()
+        })
+    logger.info(f"found {len(results)} entries for Herald Times")
+    return results
+
+    
+
+@retry(tries=3, delay=2)
+def fetch_chalkbeat() -> List[Dict[str, Any]]:
+    url = "https://www.chalkbeat.org/indiana/"
+    logger.info("Fetching Chalkbeat page: %s", url)
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    thisyear = datetime.today().year
+    story_groups = soup.find_all(class_="results-list-container")
+
+    results = []
+    found = set()
+
+    for grp in story_groups:
+        # Loop through each article in this group
+        for article in grp.find_all(class_="PagePromo-content"):
+            # Extract all <a> tags with valid links for this year
+            links = [
+                a["href"]
+                for a in article.find_all("a", href=True)
+                if f"/indiana/{thisyear}" in a["href"]
+            ]
+            if not links:
+                continue  # Skip articles without valid URLs
+
+            href = links[0]  # First link is the main story link
+            full_url = requests.compat.urljoin(url, href)
+
+            # Extract the article title
+            title_tag = article.find(class_="PagePromo-title")
+            title = title_tag.get_text(strip=True) if title_tag else None
+            
+            if not title:
+                continue
+
+            # Extract the article summary/description
+            desc_tag = article.find(class_="PagePromo-description")
+            summary = desc_tag.get_text(strip=True) if desc_tag else None
+
+            # Extract date from URL if present
+            try:
+                date_str = href.split("/indiana/")[-1].split("/", 3)[:3]
+                date = datetime.strptime("-".join(date_str), "%Y-%m-%d").strftime("%Y-%m-%d")
+            except Exception:
+                date = datetime.now().strftime("%Y-%m-%d")
+
+            # Deduplication check
+            if full_url in found:
+                continue
+            found.add(full_url)
+            
+
+            # Append result
+            results.append({
+                "date": date,
+                "site": "Chalkbeat",
+                "title": title,
+                "summary": summary or title,
+                "url": full_url,
+                "content": None,
+                "email": False,
+                "created_at": datetime.now().isoformat(),
+            })
+    logger.info(f"Found {len(results)} entries for ChalkBeat")
+    return results
+    
+    
+    
 
 @retry(tries=3, delay=2)
 def fetch_nwitimes() -> List[Dict[str, Any]]:
@@ -296,6 +409,77 @@ def fetch_nwitimes() -> List[Dict[str, Any]]:
         })
     logger.info(f"found {len(results)} entries for NWI times")
     return results
+
+
+@retry(tries=3, delay=2)
+def fetch_indianalawyer():
+    url='https://www.theindianalawyer.com/latest-publication'
+    logger.info("Fetching Indiana Lawyer: %s", url)
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")  
+    
+    stories = [a for a in soup.find_all("article")]
+    # Each story is an <article>; class may vary, so don't overfit the selector.
+    stories = soup.find_all("article")
+    results = []
+    for art in stories:
+        try:
+            # URL + title
+            h2_link = art.find("h2")
+            if not h2_link:
+                continue  # skip promos without a title
+            a_tag = h2_link.find("a", href=True)
+            if not a_tag:
+                continue
+            href = urljoin(url, a_tag["href"])
+            title = a_tag.get_text(strip=True)
+
+            # Date (prefer machine-readable datetime attr; fallback to text)
+            date_iso = None
+            t = art.find("time")
+            if t and t.has_attr("datetime"):
+                # Example: "2025-08-13T02:03:47-04:00"
+                try:
+                    date_iso = datetime.fromisoformat(t["datetime"]).date().isoformat()
+                except Exception:
+                    date_iso = None
+            if not date_iso and t:
+                # Fallback like "August 13, 2025"
+                try:
+                    date_iso = datetime.strptime(t.get_text(strip=True), "%B %d, %Y").date().isoformat()
+                except Exception:
+                    date_iso = None
+
+            # Summary (first paragraph in the card)
+            p = art.find("p")
+            summary = p.get_text(strip=True) if p else ""
+
+            # Optional: author and image if you want to keep them
+            by = art.select_one(".byline a, .author a, .byline .author")
+            author = by.get_text(strip=True) if by else None
+
+            img = art.find("img")
+            image = img.get("src") if img else None
+
+            results.append({
+                "date": date_iso,
+                "site": "The Indiana Lawyer",
+                "title": title,
+                "summary": summary,
+                "url": href,
+                "content": None,
+                "email": False,
+                "created_at": datetime.now().isoformat(),
+            })
+        except Exception as e:
+            logger.exception("Error parsing an article card: %s", e)
+            continue
+
+    logger.info("found %d entries for Indiana Lawyer", len(results))
+    return results
+
+
 
 @retry(tries=3, delay=2)
 def fetch_courier():
@@ -511,7 +695,10 @@ foos = {
     'emails':fetch_emails,
     'nwitimes':fetch_nwitimes,
     'courier':fetch_courier,
-    'tribstar':fetch_tribstar
+    'tribstar':fetch_tribstar,
+    'herald':fetch_heraldtimes,
+    'chalkbeat':fetch_chalkbeat,
+    'indiana_lawyer': fetch_indianalawyer
 }
 
 image = (
@@ -538,9 +725,9 @@ app = modal.App("hoosier-news-getdata", image=image)
     schedule=modal.Cron("0 */5 * * *"),
     timeout=3000,
 )
+
 def main():
-    logger.error(f"starting...")
-    setup_ssh_client()
+    logger.info(f"starting...")
     all_entries: List[Dict[str, Any]] = []
     for url in RSS_FEEDS:
         try:
@@ -549,16 +736,19 @@ def main():
         except Exception as e:
             logger.error(f"{url} failed:\n{e}")
             continue
-    
     for site, fetch_fn in foos.items():
         try:
             all_entries.extend(fetch_fn())
         except Exception as e:
             logger.error(f"{site} failed:\n{e}")
     fn = f"entries-{datetime.now().isoformat()}.jsonl.gz"
-    tmp_path = pathlib.Path(tempfile.gettempdir()) / fn
+    tmp_path = pathlib.Path(tempfile.gettempdir()) / fn    
     save_jsonl(all_entries, tmp_path)
+
+    
+    setup_ssh_client()
     send_file(tmp_path, f'/root/news/data/{fn}') #  local=True .. probably need to handle with cli better than this
+    
     log_contents = log_stream.getvalue()
     if log_contents:
         send_summary_email(log_contents)

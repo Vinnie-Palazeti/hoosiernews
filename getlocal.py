@@ -57,13 +57,16 @@ def send_summary_email(body: str):
     msg.set_content(body)
     with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
         smtp.starttls()
-        smtp.login("vinnie.palazeti@indystats.com", "***REMOVED***")
+        smtp.login("vinnie.palazeti@indystats.com", os.getenv('EMAIL_PASSWORD'))
         smtp.send_message(msg)
 
 def main():
     logger.info("STARTING SCRIPT: getlocal.py")
     data_dir = Path('~/news/data').expanduser()
     files = list(data_dir.glob('entries-*.jsonl.gz'))
+    
+    # files = [Path('/var/folders/ff/zfwbsr290232x88rkrnvhfxw0000gp/T/entries-2025-08-19T16:08:50.183704.jsonl.gz')] # local
+    
     logger.info("files found: %d", len(files))
     rows = []
     for file in files:

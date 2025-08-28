@@ -137,7 +137,21 @@ svgs = {
         Path(d='M4 10h16'),
         Path(d='M5 10a7 7 0 0 1 14 0'),
         Path(d='M5 14v6a1 1 0 0 1-1 1H2')
+    ),
+    
+    "The Indiana Lawyer": Svg(xmlns='http://www.w3.org/2000/svg', width='24', height='24', viewbox='0 0 24 24', fill='none', stroke='currentColor', stroke_width='2', stroke_linecap='round', stroke_linejoin='round', cls='size-10 sm:size-12')(
+        Path(d='M10 2v8l3-3 3 3V2'),
+        Path(d='M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20')
+    ),
+    "Chalkbeat":Svg(xmlns='http://www.w3.org/2000/svg', width='24', height='24', viewbox='0 0 24 24', fill='none', stroke='currentColor', stroke_width='2', stroke_linecap='round', stroke_linejoin='round', cls='size-10 sm:size-12')(
+        Path(d='M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z')
+    ),
+    "Herald Times":Svg(xmlns='http://www.w3.org/2000/svg', width='24', height='24', viewbox='0 0 24 24', fill='none', stroke='currentColor', stroke_width='2', stroke_linecap='round', stroke_linejoin='round', cls='size-10 sm:size-12')(
+        Path(d='M11 6a13 13 0 0 0 8.4-2.8A1 1 0 0 1 21 4v12a1 1 0 0 1-1.6.8A13 13 0 0 0 11 14H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z'),
+        Path(d='M6 14a12 12 0 0 0 2.4 7.2 2 2 0 0 0 3.2-2.4A8 8 0 0 1 10 14'),
+        Path(d='M8 6v8')
     )
+        
     
 }
 
