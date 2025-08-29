@@ -624,6 +624,9 @@ def fetch_emails(max_emails: int = 5) -> List[Dict[str, Any]]:
     for msg in messages[:max_emails]:
         msg_data = get_message_content(service, msg['id'])
         sender = msg_data.get('sender')
+        # not sure why pothole email made it in here..
+        if 'othole' in msg_data.get('subject'):
+            continue
         entries.append({
             'date': msg_data.get('date'),
             'site': NAME_MAP.get(sender, sender),
