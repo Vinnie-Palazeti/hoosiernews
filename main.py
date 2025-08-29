@@ -2,16 +2,17 @@ from fasthtml.common import *
 from svgs import svgs
 import random
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 from dataclasses import dataclass
 from locations import *
 from typing import List, Dict, Optional, Any
 from starlette.requests import Request
 from starlette.middleware.sessions import SessionMiddleware
+from attribution import attribution_before
 import os
+import uuid
 from dotenv import load_dotenv
 load_dotenv()
-
 
 @dataclass
 class DiegoLocation:
@@ -20,38 +21,93 @@ class DiegoLocation:
     proof: str
     latval: float
     lonval: float
+    
+    
+def theme_script():
+    """
+    Generates the client-side script to manage theme persistence in localStorage.
+    This should be placed in the <head> of your HTML to prevent FOUC (Flash of Unstyled Content).
+    """
+    js_code = """
+    (function() {
+        // Part 1: Apply the theme immediately on page load
+        // This part runs before the DOM is fully loaded to prevent the page from flashing with the wrong theme.
+        try {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) {
+                // If a theme is saved, set it on the root <html> element.
+                // DaisyUI reads this attribute to apply the correct theme.
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            }
+        } catch (e) {
+            console.error('Could not access localStorage for theme.', e);
+        }
+
+        // Part 2: Update the toggle state and save changes
+        // This part waits for the DOM to be ready before trying to find the checkbox.
+        document.addEventListener('DOMContentLoaded', () => {
+            const themeController = document.querySelector('.theme-controller');
+            if (!themeController) return;
+
+            // Sync the checkbox's 'checked' state with the current theme.
+            // The value of the checkbox is 'dark'. If the current theme is 'dark', it should be checked.
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            if (currentTheme === themeController.value) {
+                themeController.checked = true;
+            }
+
+            // Add an event listener to the checkbox.
+            themeController.addEventListener('change', function() {
+                let newTheme;
+                if (this.checked) {
+                    // When checked, the theme is the checkbox's value (e.g., 'dark').
+                    newTheme = this.value;
+                } else {
+                    // When unchecked, you might want to revert to a default theme, like 'light'.
+                    // DaisyUI's default behavior is to remove the data-theme attribute.
+                    // We will store 'light' as our default.
+                    newTheme = 'light';
+                }
+                
+                // Apply the new theme to the <html> element.
+                document.documentElement.setAttribute('data-theme', newTheme);
+                
+                // Save the new theme to localStorage.
+                try {
+                    localStorage.setItem('theme', newTheme);
+                } catch (e) {
+                    console.error('Could not save theme to localStorage.', e);
+                }
+            });
+        });
+    })();
+    """
+    return Script(js_code)
 
 headers=[
+    theme_script(), 
     Meta(charset='UTF-8'),
     Meta(name='viewport', content='width=device-width, initial-scale=1.0, maximum-scale=1.0'),
-    
-    ## htmx
+
+    ### testing... ###
     # Script(src="https://unpkg.com/htmx.org@next/dist/htmx.min.js"),
+    # Script(src='https://cdn.jsdelivr.net/npm/theme-change@2.5.0/index.min.js'),
+    # Link(href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', rel='stylesheet'), 
+    # Link(href='https://cdn.jsdelivr.net/npm/daisyui@5', rel='stylesheet', type='text/css'),
+    # Script(src='https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4'),
+    ##################
     
     Script(src="/static/js/htmx.min.js"),
     Script(src="/static/js/surreal.js"),
-    
-    ### here for testing... ###
-    # Link(href='https://cdn.jsdelivr.net/npm/daisyui@5', rel='stylesheet', type='text/css'),
-    # Script(src='https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4'),
-    ###########################
-    
-    ## theme-change
-    # Script(src='https://cdn.jsdelivr.net/npm/theme-change@2.0.2/index.js'), # testing
     Script(src='/static/js/theme-change.js'),
-    
-    ## leaflet
-    # Link(href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', rel='stylesheet'), # testing
     # I had to move the market images to the static/css file because I believe the leaflet.min.css went looking for them there...
     Link(href='/static/css/leaflet.min.css', rel='stylesheet'),
-    
-    Link(rel='icon', href='/static/assets/state.svg', type='image/svg+xml'),    
-    
-    ## css
     ## pathing was messed up. static file server was not working correctly
     ## still unsure if the tailwind exe file will build this correctly while nested in the static/css/... 
     Link(rel="stylesheet", href="/static/css/output.css", type="text/css"), 
+    
     Link(rel="stylesheet", href="/static/css/custom.css", type="text/css"), 
+    Link(rel='icon', href='/static/assets/state.svg', type='image/svg+xml'),    
     
     Style(
     """
@@ -86,46 +142,13 @@ headers=[
         function gtag(){{dataLayer.push(arguments);}}
         gtag('js', new Date());
         gtag('config', '{os.getenv("GOOGLE_ANALYTICS_ID")}');        
-    """)
-    
+    """)   
 ]
 
-def create_sessions_table(db_path):
-    # Connect to (or create) the SQLite database
-    conn = sqlite3.connect(db_path)
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ip TEXT,
-        user_agent TEXT,
-        path TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    conn.commit()
-
-def log_session(req, sess):
-    ip = req.client.host
-    ua = req.headers.get("user-agent", "")
-    path = str(req.url.path)
-    
-    con = sqlite3.connect('data.db')
-    try:
-        con.execute(
-            "INSERT INTO sessions (ip, user_agent, path) VALUES (?, ?, ?)",
-            (ip, ua, path)
-        )
-        con.commit()   
-    except sqlite3.IntegrityError as e:
-        print(e)
-        pass
-    finally:
-        con.close()
-
-app = FastHTML(title='Hoosier News', before=log_session, hdrs=headers, default_hdrs=False)
-rt = app.route      
+app = FastHTML(title='Hoosier News', before=attribution_before, hdrs=headers, default_hdrs=False)
 app.add_middleware(SessionMiddleware, secret_key=os.environ['SESSION_SECRET'])
 
+rt = app.route  
 @rt("/static/{full_path:path}")
 def static(full_path: str):
     return FileResponse(f"static/{full_path}")
@@ -235,22 +258,19 @@ def card(title, summary=None, site=None, url=None, email=None, id=None, target='
             )
         )                
     )
-
-
+    
+    
 def toggle():
-    ## tried to get a post call to swap the svgs.. couldn't get it to work
-    return Div(cls='m-0 flex flex-row gap-2 backdrop-blur-sm')(
-        Span()(svgs['sun']),
-        Div(cls='inline-block w-10')(
-            Span(data_toggle_theme='dark', data_act_class='pl-4', 
-                 cls='border rounded-full border-base-700 flex items-center cursor-pointer w-10 transition-all duration-300 ease-in-out pl-0')(
-                Span(cls='rounded-full w-3 h-3 m-1 bg-gray-700')
-            )
-        ),
-        Span()(svgs['moon'])
+    return (
+        Label(cls='swap swap-rotate text-base-content')(
+            Input(type='checkbox', value='dark', cls='theme-controller'),
+            # lesson here is something like I can't define svgs in this main file? maybe it is because of the import from svgs?
+            svgs['Sun'],
+            svgs['Moon'],
+        )
     )
     
-def title_bar(req: Request={}, diego=None):
+def title_bar(req: Request={}, diego=None):    
     return (
         Div(cls='mx-auto max-w-screen-lg w-full flex flex-col sm:flex-row items-center justify-between pt-6 pb-2 gap-2')(
             Div(cls='flex items-center')(
@@ -401,9 +421,6 @@ async def post(req: Request):
         scroll_sentinel(),
     )
 
-
-
-    
 @rt('/post/{id}')
 def get(id:int, req: Request):
     post = get_post_by_id(id)
