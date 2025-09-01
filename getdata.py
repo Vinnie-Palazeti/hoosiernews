@@ -18,7 +18,7 @@ from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-
+import re
 from urllib.parse import urljoin
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -232,8 +232,6 @@ RSS_FEEDS = [
     "https://www.wrtv.com/news/local-news.rss"
 ]
 
-
-
 @retry(tries=3, delay=2)
 def fetch_rss_feed(url: str) -> feedparser.FeedParserDict:    
     logger.info("Fetching RSS feed: %s", url)
@@ -265,7 +263,6 @@ def parse_feed_entries(feed: feedparser.FeedParserDict, length:int=None) -> List
         })
     logger.info(f"found {len(entries)} entries for RSS: {site}")
     return entries 
-
 
 @retry(tries=3, delay=2)
 def fetch_heraldtimes() -> List[Dict[str, Any]]:
@@ -305,8 +302,6 @@ def fetch_heraldtimes() -> List[Dict[str, Any]]:
         })
     logger.info(f"found {len(results)} entries for Herald Times")
     return results
-
-    
 
 @retry(tries=3, delay=2)
 def fetch_chalkbeat() -> List[Dict[str, Any]]:
@@ -374,9 +369,6 @@ def fetch_chalkbeat() -> List[Dict[str, Any]]:
             })
     logger.info(f"Found {len(results)} entries for ChalkBeat")
     return results
-    
-    
-    
 
 @retry(tries=3, delay=2)
 def fetch_nwitimes() -> List[Dict[str, Any]]:
@@ -409,7 +401,6 @@ def fetch_nwitimes() -> List[Dict[str, Any]]:
         })
     logger.info(f"found {len(results)} entries for NWI times")
     return results
-
 
 @retry(tries=3, delay=2)
 def fetch_indianalawyer():
@@ -624,19 +615,27 @@ def fetch_emails(max_emails: int = 5) -> List[Dict[str, Any]]:
     for msg in messages[:max_emails]:
         msg_data = get_message_content(service, msg['id'])
         sender = msg_data.get('sender')
+
         # not sure why pothole email made it in here..
         if 'othole' in msg_data.get('subject'):
             continue
+        content = msg_data.get('html_content')
+        if not 'ActionNetwork.org' in content:
+            continue
+        
+        clean_html = re.sub(r'href="https://click\.actionnetwork\.org[^"]*"', '', content)
+        
         entries.append({
             'date': msg_data.get('date'),
             'site': NAME_MAP.get(sender, sender),
             'title': msg_data.get('subject'),
             'summary': msg_data.get('subject'),
             'url': None,
-            'content': msg_data.get('html_content'),
+            'content': clean_html,
             'email': True,
             'created_at': datetime.now().isoformat()
         })
+        
     logger.info(f"found {len(entries)} entries for Jesse Email")
     return entries
 
@@ -744,10 +743,10 @@ def main():
             all_entries.extend(fetch_fn())
         except Exception as e:
             logger.error(f"{site} failed:\n{e}")
+            
     fn = f"entries-{datetime.now().isoformat()}.jsonl.gz"
-    tmp_path = pathlib.Path(tempfile.gettempdir()) / fn    
+    tmp_path = pathlib.Path(tempfile.gettempdir()) / fn   
     save_jsonl(all_entries, tmp_path)
-
     
     setup_ssh_client()
     send_file(tmp_path, f'/root/news/data/{fn}') #  local=True .. probably need to handle with cli better than this

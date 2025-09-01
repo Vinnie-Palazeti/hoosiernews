@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 from pathlib import Path
 from email.message import EmailMessage
 import smtplib
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -61,19 +62,19 @@ def send_summary_email(body: str):
         smtp.send_message(msg)
 
 def main():
+    with open("/var/log/getlocal-start.log", "a") as f:
+        f.write(datetime.now().isoformat() + "\n")        
+        
     logger.info("STARTING SCRIPT: getlocal.py")
     data_dir = Path('~/news/data').expanduser()
     files = list(data_dir.glob('entries-*.jsonl.gz'))
-    
-    # files = [Path('/var/folders/ff/zfwbsr290232x88rkrnvhfxw0000gp/T/entries-2025-08-19T16:08:50.183704.jsonl.gz')] # local
-    
+    # files = [Path('/var/folders/ff/zfwbsr290232x88rkrnvhfxw0000gp/T/entries-2025-09-01T16:21:13.292276.jsonl.gz')]    
     logger.info("files found: %d", len(files))
     rows = []
     for file in files:
         with gzip.open(file, "rb") as f:
             rows.extend([orjson.loads(line) for line in f])
     logger.info("found records %d", len(rows))
-    
     if rows: 
         try:
             inserted = upsert_posts('data.db', rows)
@@ -93,6 +94,10 @@ def main():
         logger.info("no rows found!")
 
     log_contents = log_stream.getvalue()
+    
+    with open("/var/log/getlocal.log", "a") as f:
+        f.write(log_contents)    
+    
     if log_contents:
         send_summary_email(log_contents)
                 

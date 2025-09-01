@@ -14,6 +14,9 @@ import uuid
 from dotenv import load_dotenv
 load_dotenv()
 
+# https://www.insideindianabusiness.com/
+# https://nwindianabusiness.com/
+
 @dataclass
 class DiegoLocation:
     location: str
@@ -184,12 +187,7 @@ def get_posts(
 
     sql = f"""
     WITH recents AS (
-        SELECT
-            id, title, summary, url, site, email,
-            ROW_NUMBER() OVER (
-                PARTITION BY site
-                ORDER BY created_at DESC
-            ) AS rn
+        SELECT id, title, summary, url, site, email, ROW_NUMBER() OVER (PARTITION BY site ORDER BY created_at DESC ) AS rn
         FROM posts
         {where_clause}
     )
@@ -239,10 +237,8 @@ def card(title, summary=None, site=None, url=None, email=None, id=None, target='
         A(href=url, target=target, cls="group relative block h-52 sm:h-52 lg:h-60")(
             # background
             Span(cls=f"absolute inset-0 border-4 border-dashed"),
-
             ## background white here is for the card bg-white 
             Div(cls="bg-base-100 relative flex h-full transform items-end border-4 transition-transform group-hover:-translate-x-2 group-hover:-translate-y-2 group-[.touch-active]:-translate-x-2 group-[.touch-active]:-translate-y-2")(
-                
                 ## this is what shows by default:
                 Div(cls='h-9/10 p-2 !pt-0 sm:p-6 lg:p-8 transition-opacity group-hover:absolute group-hover:opacity-0 group-[.touch-active]:absolute group-[.touch-active]:opacity-0')(
                     Div(cls='flex flex-row items-center gap-4')(svgs.get(site), H1(site, cls='font-medium text-2xl text-wrap-2')),
@@ -258,8 +254,7 @@ def card(title, summary=None, site=None, url=None, email=None, id=None, target='
             )
         )                
     )
-    
-    
+      
 def toggle():
     return (
         Label(cls='swap swap-rotate text-base-content')(
@@ -456,8 +451,6 @@ def post(d:DiegoLocation):
     location_id = insert_location("data.db", d)
     print(f"Inserted location with ID: {location_id}") 
     return H1('Thank you for spotting Diego!', cls='text-5xl')
-    
-
 
 if __name__ == "__main__":
     import uvicorn
