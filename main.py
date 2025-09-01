@@ -17,6 +17,13 @@ load_dotenv()
 # https://www.insideindianabusiness.com/
 # https://nwindianabusiness.com/
 
+## seems to be working, even with the issues with the local Jesse post not getting sent to the front....
+
+## need to send up and run a script that removes a tags..
+## test with one! then go ahead with the rest..
+
+
+
 @dataclass
 class DiegoLocation:
     location: str
