@@ -5,6 +5,8 @@ from pathlib import Path
 from email.message import EmailMessage
 import smtplib
 from datetime import datetime
+from dotenv import load_dotenv
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -58,7 +60,7 @@ def send_summary_email(body: str):
     msg.set_content(body)
     with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
         smtp.starttls()
-        smtp.login("vinnie.palazeti@indystats.com", os.getenv('EMAIL_PASSWORD'))
+        smtp.login("vinnie.palazeti@indystats.com", os.getenv('GMAIL_APP_PASSWORD'))
         smtp.send_message(msg)
 
 def main():
