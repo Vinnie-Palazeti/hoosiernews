@@ -14,15 +14,11 @@ import uuid
 from dotenv import load_dotenv
 load_dotenv()
 
-# https://www.insideindianabusiness.com/
-# https://nwindianabusiness.com/
 
 ## seems to be working, even with the issues with the local Jesse post not getting sent to the front....
 
 ## need to send up and run a script that removes a tags..
 ## test with one! then go ahead with the rest..
-
-
 
 @dataclass
 class DiegoLocation:
@@ -296,11 +292,8 @@ def site_filter(req: Request):
         Button('Sites', popovertarget='popover-1', style='anchor-name:--anchor-1', type='button', cls='btn btn-sm sm:btn-md lg:btn-lg backdrop-blur-sm m-0'),
         Ul(popover=True, id='popover-1', style='position-anchor:--anchor-1',
             # key bits: block + columns-2 + wider + scrollable
-            cls=(
-                'dropdown menu rounded-box bg-base-100 shadow-sm p-2 '
-                'w-[24rem] max-h-96 overflow-auto'
-            )
-        )(
+            cls=('dropdown menu rounded-box bg-base-100 shadow-sm p-2 max-h-96 overflow-auto'))(
+            Div(cls='grid grid-cols-2 gap-2')(
             *[
                 Li(cls='break-inside-avoid mb-2 rounded-lg has-[:checked]:bg-base-300 has-[:checked]:text-base-content')(
                     Label(cls='label gap-2 w-full cursor-pointer')(
@@ -321,7 +314,7 @@ def site_filter(req: Request):
                 )
                 for s in all_sites
             ]
-        )
+        ))
     )
     
 def scroll_sentinel():

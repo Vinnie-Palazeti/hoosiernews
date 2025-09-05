@@ -69,8 +69,7 @@ def main():
         
     logger.info("STARTING SCRIPT: getlocal.py")
     data_dir = Path('~/news/data').expanduser()
-    files = list(data_dir.glob('entries-*.jsonl.gz'))
-    # files = [Path('/var/folders/ff/zfwbsr290232x88rkrnvhfxw0000gp/T/entries-2025-09-01T16:21:13.292276.jsonl.gz')]    
+    files = list(data_dir.glob('entries-*.jsonl.gz'))  
     logger.info("files found: %d", len(files))
     rows = []
     for file in files:

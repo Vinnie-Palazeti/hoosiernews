@@ -639,6 +639,88 @@ def fetch_emails(max_emails: int = 5) -> List[Dict[str, Any]]:
     logger.info(f"found {len(entries)} entries for Jesse Email")
     return entries
 
+@retry(tries=3, delay=2)
+def fetch_inside_indiana_business() -> List[Dict[str, Any]]:
+    url = "https://www.insideindianabusiness.com/topics/news"
+    logger.info("Fetching IIB page: %s", url)
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    stories = [a for a in soup.find_all("article")][:20]
+    results = []
+    found = []
+    for story in stories:
+        link_tag = story.find("a", href=True)
+        link = link_tag["href"] if link_tag else None
+        h2_tag = story.find("h2")
+        title = h2_tag.get_text(strip=True) if h2_tag else None
+        p_tag = story.find("p")
+        summary = p_tag.get_text(strip=True) if p_tag else None        
+        if not title:
+            continue
+        if not link:
+            continue
+        else:
+            found.append(link)     
+            
+        results.append({
+            'date': datetime.now().strftime('%Y-%m-%d'),
+            'site': 'Inside Indiana Business',
+            'title': title,
+            'summary': summary or title,
+            'url': link,
+            'content': None,
+            'email': False,
+            'created_at': datetime.now().isoformat()
+        })
+        
+    logger.info(f"found {len(results)} entries for IIB")    
+    return results
+
+@retry(tries=3, delay=2)
+def fetch_nwi_business() -> List[Dict[str, Any]]:
+    url = "https://nwindianabusiness.com/category/community/business-news/"
+    logger.info("Fetching NWI Biz: %s", url)
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    
+    stories = [a for a in soup.find_all("article")][:10]
+    
+    results = []
+    found = []
+    for story in stories:
+        link_tag = story.find("a", href=True)
+        link = link_tag["href"] if link_tag else None
+        h2_tag = story.find("h2")
+        title = h2_tag.get_text(strip=True) if h2_tag else None
+        p_tag = story.find("p")
+        summary = p_tag.get_text(strip=True) if p_tag else None   
+        
+        date_ = story.find("span", class_='published')
+        date_ = date_.get_text(strip=True) if date_ else None 
+        if date_:
+            date_ = datetime.strptime(date_, '%B %d, %Y').strftime('%Y-%m-%d')
+        if not title:
+            continue
+        if not link:
+            continue
+        else:
+            found.append(link)
+
+        results.append({
+            'date': date_ or datetime.now().strftime('%Y-%m-%d'),
+            'site': 'NWI Business',
+            'title': title,
+            'summary': summary or title,
+            'url': link,
+            'content': None,
+            'email': False,
+            'created_at': datetime.now().isoformat()
+        })
+    logger.info(f"found {len(results)} entries for NWI Biz")    
+    return results
+
 def setup_ssh_client():
     """Set up SSH client to connect to your server"""
     ssh_dir = pathlib.Path('/root/.ssh')
@@ -688,9 +770,6 @@ def save_jsonl(entries, out_path: pathlib.Path):
             f.write(b"\n")
 
 
-# from dotenv import load_dotenv
-# load_dotenv()
-
 foos = {
     'indystar':fetch_indystar,
     'ibj':fetch_ibj,
@@ -700,8 +779,14 @@ foos = {
     'tribstar':fetch_tribstar,
     'herald':fetch_heraldtimes,
     'chalkbeat':fetch_chalkbeat,
-    'indiana_lawyer': fetch_indianalawyer
+    'indiana_lawyer': fetch_indianalawyer,
+    'inside_indiana_business': fetch_inside_indiana_business,
+    'nwi_business': fetch_nwi_business,
 }
+
+# from dotenv import load_dotenv
+# load_dotenv()
+# from getlocal import upsert_posts 
 
 image = (
     modal.Image.debian_slim()
@@ -743,14 +828,14 @@ def main():
             all_entries.extend(fetch_fn())
         except Exception as e:
             logger.error(f"{site} failed:\n{e}")
+    # breakpoint()
+    # inserted = upsert_posts('data.db', all_entries)
             
     fn = f"entries-{datetime.now().isoformat()}.jsonl.gz"
     tmp_path = pathlib.Path(tempfile.gettempdir()) / fn   
     save_jsonl(all_entries, tmp_path)
-    
     setup_ssh_client()
-    send_file(tmp_path, f'/root/news/data/{fn}') #  local=True .. probably need to handle with cli better than this
-    
+    send_file(tmp_path, f'/root/news/data/{fn}') 
     log_contents = log_stream.getvalue()
     if log_contents:
         send_summary_email(log_contents)

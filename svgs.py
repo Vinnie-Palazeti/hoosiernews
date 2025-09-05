@@ -160,9 +160,21 @@ svgs = {
         Path(d='M11 6a13 13 0 0 0 8.4-2.8A1 1 0 0 1 21 4v12a1 1 0 0 1-1.6.8A13 13 0 0 0 11 14H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z'),
         Path(d='M6 14a12 12 0 0 0 2.4 7.2 2 2 0 0 0 3.2-2.4A8 8 0 0 1 10 14'),
         Path(d='M8 6v8')
-    )
-        
+    ),
     
+    "NWI Business":Svg(xmlns='http://www.w3.org/2000/svg', width='24', height='24', viewbox='0 0 24 24', fill='none', stroke='currentColor', stroke_width='2', stroke_linecap='round', stroke_linejoin='round', cls='size-10 sm:size-12')(
+        Path(d='M12 12h.01'),
+        Path(d='M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2'),
+        Path(d='M22 13a18.15 18.15 0 0 1-20 0'),
+        Rect(width='20', height='14', x='2', y='6', rx='2')
+    ),
+    "Inside Indiana Business": Svg(xmlns='http://www.w3.org/2000/svg', width='24', height='24', viewbox='0 0 24 24', fill='none', stroke='currentColor', stroke_width='2', stroke_linecap='round', stroke_linejoin='round', cls='size-10 sm:size-12')(
+        Path(d='M12 16h.01'),
+        Path(d='M16 16h.01'),
+        Path(d='M3 19a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5a.5.5 0 0 0-.769-.422l-4.462 2.844A.5.5 0 0 1 15 10.5v-2a.5.5 0 0 0-.769-.422L9.77 10.922A.5.5 0 0 1 9 10.5V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z'),
+        Path(d='M8 16h.01')
+    )
+
 }
 
 
