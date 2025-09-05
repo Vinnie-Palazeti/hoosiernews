@@ -110,7 +110,7 @@ headers=[
     Link(href='/static/css/leaflet.min.css', rel='stylesheet'),
     ## pathing was messed up. static file server was not working correctly
     ## still unsure if the tailwind exe file will build this correctly while nested in the static/css/... 
-    Link(rel="stylesheet", href="/static/css/output.css", type="text/css"), 
+    Link(rel="stylesheet", href="/static/css/output-v1.css", type="text/css"), 
     
     Link(rel="stylesheet", href="/static/css/custom.css", type="text/css"), 
     Link(rel='icon', href='/static/assets/state.svg', type='image/svg+xml'),    
