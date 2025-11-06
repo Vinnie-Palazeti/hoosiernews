@@ -5,20 +5,30 @@ import sqlite3
 from datetime import date, datetime
 from dataclasses import dataclass
 from locations import *
-from typing import List, Dict, Optional, Any
+from typing import Any
 from starlette.requests import Request
 from starlette.middleware.sessions import SessionMiddleware
 from attribution import attribution_before
 import os
-import uuid
 from dotenv import load_dotenv
+import pandas as pd
+from pathlib import Path
 load_dotenv()
 
+## search!
 
-## seems to be working, even with the issues with the local Jesse post not getting sent to the front....
+# http://mywabashvalley.com/news/local-news/
+# https://indianacitizen.org/
+# https://fox59.com/
+# https://www.journalgazette.net/local/
 
-## need to send up and run a script that removes a tags..
-## test with one! then go ahead with the rest..
+BASE_DIR = Path(__file__).resolve().parent
+budget_data =  pd.read_parquet(BASE_DIR / "static" / "data" / "indiana_budget.parquet")
+budget_data.columns = ['PS Fund', 'ACFR Fund', 'BU', 'PS Fund Description', 'Account', 
+                     'Account Description', 'Amount', 'Fund Type', 'ACFR Name', 'BU Name', 'Text']
+
+
+
 
 @dataclass
 class DiegoLocation:
@@ -110,7 +120,8 @@ headers=[
     Link(href='/static/css/leaflet.min.css', rel='stylesheet'),
     ## pathing was messed up. static file server was not working correctly
     ## still unsure if the tailwind exe file will build this correctly while nested in the static/css/... 
-    Link(rel="stylesheet", href="/static/css/output-v1.css", type="text/css"), 
+    # Link(rel="stylesheet", href="/static/css/output-v1.css", type="text/css"), 
+    Link(rel="stylesheet", href="/static/css/output.css", type="text/css"), 
     
     Link(rel="stylesheet", href="/static/css/custom.css", type="text/css"), 
     Link(rel='icon', href='/static/assets/state.svg', type='image/svg+xml'),    
@@ -151,7 +162,8 @@ headers=[
     """)   
 ]
 
-app = FastHTML(title='Hoosier News', before=attribution_before, hdrs=headers, default_hdrs=False)
+app = FastHTMLWithLiveReload(title='Hoosier News', before=attribution_before, hdrs=headers, default_hdrs=False)
+# app = FastHTML(title='Hoosier News', before=attribution_before, hdrs=headers, default_hdrs=False)
 app.add_middleware(SessionMiddleware, secret_key=os.environ['SESSION_SECRET'])
 
 rt = app.route  
@@ -356,6 +368,95 @@ async def get(req: Request):
 async def get(req: Request):
     ## an actually working pothole viewer
     pass
+
+
+@rt('/budget')
+async def get(req: Request):
+    
+    ## TODO
+    # active search with htmx or javascript for ACFR Name and BU Name
+        # dropdown with checkmarks (quasi multiselect)
+    
+    # reset filters
+    
+    
+    # kw search
+    # dropdown select
+        # active search for dropdown filters
+    # staging, add to report
+        # # text search on text.. the full text search needs a button.    
+    # initial filters
+
+    search_type = Form(cls='filter')(
+            Input(cls='btn', type='radio', checked=True, name="search_type", aria_label='Key Word'),
+            Input(cls='btn', type='radio', name="search_type", aria_label='Semantic'),
+    )
+    
+    search_input = Label(cls='input')(
+        svgs.get('mag_glass'),
+        Input(type="search", required=True, placeholder="Search")
+    )
+    
+    cols = ['BU Name','PS Fund Description','ACFR Name','Amount'] 
+    print(budget_data.columns)
+    data = budget_data.head()[cols]
+    total = data['Amount'].sum()
+    rows = data.to_dict("records")
+
+    # Helper for formatting the numeric column
+    def fmt_amount(x: float) -> str:
+        if x < 0:
+            return f"(${abs(x):,.2f})"
+        return f"${x:,.2f}"
+
+    # Build DaisyUI table
+    table = Table(cls="table bg-base-100 rounded-xl shadow-lg w-full")(
+        Thead()(
+            Tr()(
+                *[
+                    Th(name, cls="text-base-content font-semibold")
+                    for name in cols
+                ]
+            )
+        ),
+        Tbody()(
+            # Data rows
+            *[
+                Tr(cls="hover:bg-base-300")(
+                    Td(row["BU Name"], cls="text-base-content"),
+                    Td(row["PS Fund Description"], cls="text-base-content"),
+                    Td(row["ACFR Name"], cls="text-base-content"),
+                    Td(fmt_amount(row["Amount"]), cls="text-base-content text-right font-mono"),
+                )
+                for row in rows
+            ],
+            # Total row
+            Tr(cls="border-t-2 border-base-300 bg-base-200 font-semibold")(
+                Td("Total", cls="text-base-content"),
+                Td("", cls="text-base-content"),  # empty cells to align
+                Td("", cls="text-base-content"),
+                Td(fmt_amount(total), cls="text-base-content text-right font-mono"),
+            ),
+        ),
+    )
+    return Body()( 
+        Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
+            Form(id='feed')(
+            title_bar(req),                
+            Div(cls='mx-auto font-sans antialiased h-full w-full')(
+                Div(cls='mx-auto max-w-screen-lg')(
+                    Div(cls='pb-2')(search_input),
+                    Div(cls='pb-4')(search_type),
+                    table
+                )
+            )
+            )
+        )
+    )        
+        
+    
+
+    
     
     
 @rt('/filter')
@@ -453,8 +554,9 @@ def post(d:DiegoLocation):
     return H1('Thank you for spotting Diego!', cls='text-5xl')
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000)
+    # import uvicorn
+    # uvicorn.run("main:app", host="127.0.0.1", port=8000)
+    serve(host="127.0.0.1", port=8000)
     
 
 
