@@ -179,6 +179,10 @@ svgs = {
         cls="w-5 h-5", 
         xmlns="http://www.w3.org/2000/svg", fill="#000000", viewBox="0 0 256 256")(
         Path(d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z")
+    ),
+    'close': Svg(xmlns='http://www.w3.org/2000/svg', viewbox='0 0 24 24', 
+                 cls="w-3 h-3", color='currentColor', fill='none')(
+        Path(d='M18 6L6.00081 17.9992M17.9992 18L6 6.00085', stroke='currentColor', stroke_width='1.5', stroke_linecap='round', stroke_linejoin='round')
     )
     
 }
