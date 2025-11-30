@@ -828,6 +828,7 @@ def main():
             all_entries.extend(fetch_fn())
         except Exception as e:
             logger.error(f"{site} failed:\n{e}")
+            
     # breakpoint()
     # inserted = upsert_posts('data.db', all_entries)
             

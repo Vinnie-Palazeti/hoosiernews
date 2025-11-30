@@ -182,7 +182,37 @@ svgs = {
     ),
     'close': Svg(xmlns='http://www.w3.org/2000/svg', viewbox='0 0 24 24', 
                  cls="w-3 h-3", color='currentColor', fill='none')(
-        Path(d='M18 6L6.00081 17.9992M17.9992 18L6 6.00085', stroke='currentColor', stroke_width='1.5', stroke_linecap='round', stroke_linejoin='round')
+        Path(d='M18 6L6.00081 17.9992M17.9992 18L6 6.00085', stroke='currentColor', stroke_width='1.52', stroke_linecap='round', stroke_linejoin='round')
+    ),
+                 
+    # need to make sure you use the RAW svg
+    "budget_icon": Svg(xmlns='http://www.w3.org/2000/svg', cls="w-5 h-5", viewbox='0 0 256 256')(
+        Rect(width='256', height='256', fill='none'),
+        Polygon(points='24 96 232 96 128 32 24 96', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Line(x1='56', y1='96', x2='56', y2='176', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Line(x1='104', y1='96', x2='104', y2='176', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Line(x1='152', y1='96', x2='152', y2='176', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Line(x1='200', y1='96', x2='200', y2='176', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Line(x1='32', y1='176', x2='224', y2='176', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Line(x1='16', y1='208', x2='240', y2='208', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16')
+    ),
+    
+    
+    "diego":Svg(xmlns='http://www.w3.org/2000/svg', cls="w-5 h-5", viewbox='0 0 256 256')(
+        Rect(width='256', height='256', fill='none'),
+        Line(x1='24', y1='216', x2='168', y2='216', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Path(d='M88,116.51,58.65,88a8,8,0,0,1,2.2-13.3L68,72l57.53,21.17,54.84-32.75a32,32,0,0,1,41,7.32L240,91.64l-147.41,88a32,32,0,0,1-38-4.32L18.53,140a8,8,0,0,1,2.32-13.19L24,125.27,55.79,136Z', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16')
+    ),
+    'download':Svg(xmlns='http://www.w3.org/2000/svg', cls="w-5 h-5", viewbox='0 0 256 256')(
+        Rect(width='256', height='256', fill='none'),
+        Line(x1='128', y1='144', x2='128', y2='32', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Polyline(points='216 144 216 208 40 208 40 144', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Polyline(points='168 104 128 144 88 104', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16')
+    ),
+    'arrow_up_right': Svg(xmlns='http://www.w3.org/2000/svg', cls="w-5 h-5", viewbox='0 0 256 256')(
+        Rect(width='256', height='256', fill='none'),
+        Line(x1='64', y1='192', x2='192', y2='64', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Polyline(points='88 64 192 64 192 168', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16')
     )
     
 }

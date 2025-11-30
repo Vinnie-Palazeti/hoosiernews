@@ -17,9 +17,18 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import json
 import uuid
+from starlette.responses import Response
 load_dotenv()
 
-## search!
+
+## how will github actions work?
+## push to github
+## connect to server
+## rsync code
+## reset systemd
+## maybe always uv sync?
+
+
 # https://www.purdueexponent.org/
 # http://mywabashvalley.com/news/local-news/
 # https://indianacitizen.org/
@@ -27,15 +36,19 @@ load_dotenv()
 # https://www.journalgazette.net/local/
 
 
+## load local data ##
 BASE_DIR = Path(__file__).resolve().parent
 model = SentenceTransformer( "all-MiniLM-L6-v2")
+
 index = faiss.read_index(str(BASE_DIR / "static" / "data" / "indiana_budget.index"))
+index_li = faiss.read_index(str(BASE_DIR / "static" / "data" / "indiana_budget_li.index"))
+
 budget_data =  (
     pd.read_parquet(BASE_DIR / "static" / "data" / "indiana_budget.parquet")
-    .drop(columns=['row_indices'])
     .rename(columns={'Total Amount':'Amount'})   
 )
-
+budget_line_items = pd.read_parquet(BASE_DIR / "static" / "data" / "indiana_budget_li.parquet")
+######
 
 @dataclass
 class DiegoLocation:
@@ -113,22 +126,23 @@ headers=[
     Meta(name='viewport', content='width=device-width, initial-scale=1.0, maximum-scale=1.0'),
 
     ### testing... ###
-    Script(src="https://unpkg.com/htmx.org@next/dist/htmx.min.js"),
+    # Script(src="https://unpkg.com/htmx.org@next/dist/htmx.min.js"),
     Script(src='https://cdn.jsdelivr.net/npm/theme-change@2.5.0/index.min.js'),
-    Link(href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', rel='stylesheet'), 
+    # # Link(href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', rel='stylesheet'), 
     Link(href='https://cdn.jsdelivr.net/npm/daisyui@5', rel='stylesheet', type='text/css'),
     Script(src='https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4'),
     ##################
     
-    # Script(src="/static/js/htmx.min.js"),
+    ## this breaks if I try to use the newest cdn!
+    ## I can't use the cdn because when I use the back the page refreshes! something to do the transitions?
+    Script(src="/static/js/htmx.min.js"),
+
     Script(src="/static/js/surreal.js"),
     # Script(src='/static/js/theme-change.js'),
     # # I had to move the market images to the static/css file because I believe the leaflet.min.css went looking for them there...
-    # Link(href='/static/css/leaflet.min.css', rel='stylesheet'),
-    # ## pathing was messed up. static file server was not working correctly
-    # ## still unsure if the tailwind exe file will build this correctly while nested in the static/css/... 
-    # Link(rel="stylesheet", href="/static/css/output-v1.css", type="text/css"), 
+    Link(href='/static/css/leaflet.min.css', rel='stylesheet'),
     # Link(rel="stylesheet", href="/static/css/output.css", type="text/css"), 
+    
     
     Link(rel="stylesheet", href="/static/css/custom.css", type="text/css"), 
     Link(rel='icon', href='/static/assets/state.svg', type='image/svg+xml'),    
@@ -159,6 +173,41 @@ headers=[
         }
     """
     ),
+    Style(
+    """
+      @keyframes fade-in {
+         from { opacity: 0; }
+       }
+    
+       @keyframes fade-out {
+         to { opacity: 0; }
+       }
+    
+       @keyframes slide-from-right {
+         from { transform: translateX(90px); }
+       }
+    
+       @keyframes slide-to-left {
+         to { transform: translateX(-90px); }
+       }
+    
+       /* define animations for the old and new content */
+       ::view-transition-old(slide-it) {
+         animation: 180ms cubic-bezier(0.4, 0, 1, 1) both fade-out,
+         600ms cubic-bezier(0.4, 0, 0.2, 1) both slide-to-left;
+       }
+       ::view-transition-new(slide-it) {
+         animation: 420ms cubic-bezier(0, 0, 0.2, 1) 90ms both fade-in,
+         600ms cubic-bezier(0.4, 0, 0.2, 1) both slide-from-right;
+       }
+    
+       /* tie the view transition to a given CSS class */
+       .slide-transition {
+           view-transition-name: slide-it;
+       }    
+    """    
+    ),
+    
     Script(_async=True, src=f'https://www.googletagmanager.com/gtag/js?id={os.getenv("GOOGLE_ANALYTICS_ID")}'),
     Script(
         f"""
@@ -169,8 +218,8 @@ headers=[
     """)   
 ]
 
-app = FastHTMLWithLiveReload(title='Hoosier News', before=attribution_before, hdrs=headers, default_hdrs=False)
-# app = FastHTML(title='Hoosier News', before=attribution_before, hdrs=headers, default_hdrs=False)
+# app = FastHTMLWithLiveReload(title='Hoosier News', before=attribution_before, hdrs=headers, default_hdrs=False)
+app = FastHTML(title='Hoosier News', before=attribution_before, hdrs=headers, default_hdrs=False)
 app.add_middleware(SessionMiddleware, secret_key=os.environ['SESSION_SECRET'])
 
 rt = app.route  
@@ -258,9 +307,9 @@ def card(title, summary=None, site=None, url=None, email=None, id=None, target='
     return (
         A(href=url, target=target, cls="group relative block h-52 sm:h-52 lg:h-60")(
             # background
-            Span(cls=f"absolute inset-0 border-4 border-dashed"),
+            Span(cls=f"absolute inset-0 border-2 border-dashed"),
             ## background white here is for the card bg-white 
-            Div(cls="bg-base-100 relative flex h-full transform items-end border-4 transition-transform group-hover:-translate-x-2 group-hover:-translate-y-2 group-[.touch-active]:-translate-x-2 group-[.touch-active]:-translate-y-2")(
+            Div(cls="bg-base-100 relative flex h-full transform items-end border-2 transition-transform group-hover:-translate-x-2 group-hover:-translate-y-2 group-[.touch-active]:-translate-x-2 group-[.touch-active]:-translate-y-2")(
                 ## this is what shows by default:
                 Div(cls='h-9/10 p-2 !pt-0 sm:p-6 lg:p-8 transition-opacity group-hover:absolute group-hover:opacity-0 group-[.touch-active]:absolute group-[.touch-active]:opacity-0')(
                     Div(cls='flex flex-row items-center gap-4')(svgs.get(site), H1(site, cls='font-medium text-2xl text-wrap-2')),
@@ -285,8 +334,7 @@ def toggle():
             svgs['Sun'],
             svgs['Moon'],
         )
-    )
-    
+    ) 
         
 def title_bar(req: Request={}, sites:bool=True):    
     return (
@@ -301,8 +349,8 @@ def title_bar(req: Request={}, sites:bool=True):
                 site_filter(req=req) if sites else None,
                 Button('Apps', popovertarget='popover-2', style='anchor-name:--anchor-2', type='button', cls='btn btn-sm sm:btn-md lg:btn-lg backdrop-blur-sm m-0'),
                     Ul(popover=True, id='popover-2', style='position-anchor:--anchor-2',cls='dropdown menu rounded-box bg-base-100 shadow-sm p-2 max-h-96 overflow-auto')(
-                        Li(A(href='/where-is-diego', cls='text-lg p-3')("Where is Diego?")),
-                        Li(A(href='/budget',cls='text-lg p-3')('Indiana Budget'))
+                        Li(A(href='/where-is-diego', cls='flex flex-row text-lg p-3')( svgs.get('diego'), P("Where is Diego?"))),
+                        Li(A(href='/budget',cls='flex flex-row text-lg p-3')(svgs.get('budget_icon'), P('Indiana Budget')))
                     )                
                 )
             ),
@@ -354,8 +402,11 @@ def scroll_sentinel():
         hx_on__before_request="this.remove();"   # removes itself before the fetch
     )   
  
+             
 def grid():
-    return Div(id='content', cls='pb-4 gap-4 mx-auto max-w-screen-lg grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))]')
+    return Div(id='content', 
+               cls='pb-4 gap-4 mx-auto max-w-screen-lg grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] sm:px-3 md:px-4 lg:px-0'
+    )
 
 ## if I had a user store I could set their defaults..
 @rt('/')
@@ -367,11 +418,22 @@ async def get(req: Request):
         Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
             Form(id='feed')(
             title_bar(req),                
-            Div(cls='mx-auto font-sans antialiased h-full w-full')(
-                grid()(*[Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])}')(card(**i)) for i in get_posts(sites=sites)]),
+            Div(cls="mx-auto font-sans antialiased h-full w-full max-w-screen-lg px-4 sm:px-6 md:px-4 lg:px-0")(
+                grid()(*[Div(cls=f'fade-in-{random.choice(["one","two","three","four","five","six"])} w-full max-w-[320px] md:max-w-none mx-auto')(
+                    card(**i)) for i in get_posts(sites=sites)
+                    ]
+                ),
                 Input(id='p', name='p', value=1, type='hidden'),
-                Div(cls='h-10', hx_target='#content', hx_trigger='revealed', hx_swap='beforeend', hx_post='/scroll', hx_include='#feed', hx_on__before_request="this.remove();")
+                Div(
+                    cls='h-10',
+                    hx_target='#content',
+                    hx_trigger='revealed',
+                    hx_swap='beforeend',
+                    hx_post='/scroll',
+                    hx_include='#feed',
+                    hx_on__before_request="this.remove();"
                 )
+            )            
             )                 
         ),
         Script(src='/static/js/touch.js'),
@@ -396,10 +458,11 @@ def format_table_total(total, swap_oob:str=None):
             Td("", cls="text-base-content"),
             Td("", cls="text-base-content"),
             Td("", cls="text-base-content"),
+            Td("", cls="text-base-content"),
             Td(fmt_amount(total), cls="text-base-content text-right font-mono"),
-        ),
-    )
-
+        )
+    )                
+                
 def format_table_rows(rows:list,batch_id: str | None = None):
     batch_attr = {"data-id": batch_id} if batch_id else {}
     return (
@@ -408,42 +471,32 @@ def format_table_rows(rows:list,batch_id: str | None = None):
                     Td(row["BU Name"], cls="text-base-content"),
                     Td(row["PS Fund Description"], cls="text-base-content"),
                     Td(row["ACFR Name"], cls="text-base-content"),
+                    Td(row["Category"], cls="text-base-content"),
                     Td(row["Year"], cls="text-base-content"),
-                    Td(row["Row Count"], cls="text-base-content"),
+                    Td(
+                        Div(cls="flex flex-row items-center justify-between w-full gap-x-2")(
+                            Span(str(row["Row Count"])),
+                            Div(cls='tooltip', data_tip='View underlying Line Items')(
+                                Button(
+                                svgs.get('arrow_up_right'),
+                                cls="btn btn-sm",
+                                hx_get="/drill-down", 
+                                hx_swap="innerHTML transition:true",
+                                hx_push_url="true",
+                                hx_target="#big-table",
+                                hx_vals={"row_idxs": json.dumps(row['row_indices'])}
+                            ))
+                        ),
+                        cls="text-base-content"
+                    ),
                     Td(fmt_amount(row["Amount"]), cls="text-base-content text-right font-mono"),
                 )
                 for row in rows
             ] if rows else []
     )
     
-@rt('/delete-batch')
-def post(batch_id:str, batch_total:str, current_total:str, current_idx:str):
-    
-    updated_total = float(current_total) - float(batch_total)
-    current_idx = json.loads(current_idx)
-    current_idx.pop(batch_id)
-    
-    return (
-        Script(f'document.querySelectorAll(\'tr[data-id="{batch_id}"]\').forEach(e => e.remove());'),
-        format_table_total(updated_total, swap_oob='outerHTML'),
-        Input(
-            type='hidden',
-            id='current_total',
-            name='current_total',
-            value=updated_total,
-            hx_swap_oob='outerHTML'
-        ),
-        Input(
-            type='hidden',
-            id='current_idx',
-            name='current_idx',
-            value=json.dumps(current_idx),
-            hx_swap_oob='outerHTML'
-        ),
-    )
-  
 def search_tag(text, batch_id: str, batch_total:str):
-    return Div(cls='p-2')(
+    return (
         Div(
             hx_post='/delete-batch',
             hx_target='this',
@@ -451,7 +504,7 @@ def search_tag(text, batch_id: str, batch_total:str):
             hx_vals={'batch_id':batch_id, 'batch_total':batch_total},
             hx_on__after_swap='this.remove()',
             cls=(
-                'group relative inline-flex items-center gap-1 text-xs font-medium '
+                'group relative inline-flex items-center text-xs font-medium '
                 'text-primary-content focus:outline-none focus:ring-2 '
                 'focus:ring-offset-2 focus:ring-primary/50 rounded-lg'
             )
@@ -468,14 +521,68 @@ def search_tag(text, batch_id: str, batch_total:str):
             )
         )
     )
-
+    
+@rt('/delete-batch')
+def post(batch_id:str, batch_total:str, current_total:str, current_idx:str, search_select:str):
+    print(search_select)
+        
+    updated_total = float(current_total) - float(batch_total)
+    current_idx = json.loads(current_idx)
+    current_idx.pop(batch_id)
+    return (
+        Script(f'document.querySelectorAll(\'tr[data-id="{batch_id}"]\').forEach(e => e.remove());'),
+        
+        format_table_total(updated_total, swap_oob='outerHTML'),
+        
+        Input(
+            type='hidden',
+            id='current_total',
+            name='current_total',
+            value=updated_total,
+            hx_swap_oob='outerHTML'
+        ),
+        Input(
+            type='hidden',
+            id='current_idx',
+            name='current_idx',
+            value=json.dumps(current_idx),
+            hx_swap_oob='outerHTML'
+        ),
+        
+        Select(id='search_select', name='search_select', cls='select',
+                hx_get="/update-header",
+                hx_target="#num-entries-header",
+                hx_swap="outerHTML",
+                hx_trigger="change",
+                hx_swap_oob="outerHTML",                
+            )(
+            Option('Grouped', selected=search_select =='Grouped'),
+            Option('Line Item', selected=search_select =='Line Item'),
+        ) if len(current_idx) == 0 else None,
+    )
+  
 
 @rt('/budget-search')
-async def post(req: Request, search_input:str, search_type:str, current_idx:str, current_total:str, num_entries:int=100):
+async def post(req: Request, 
+               search_input:str, search_type:str, current_idx:str, 
+               current_total:str, d:dict, num_entries:int=100):
+    
+    ## this is because of the hidden select value
+    search_select = d.get('search_select', )
+    if isinstance(search_select, list):
+        search_select = d.get('search_select')[0]
+    elif isinstance(search_select, str):
+        search_select = d.get('search_select')
+    else: 
+        print('else...')
+        search_select='Grouped'
+
+    grped = search_select == 'Grouped' 
+
     current_idx = json.loads(current_idx) 
     current_flat_idx = [item for sublist in current_idx.values() for item in sublist]
     current_total=float(current_total or 0)
-        
+    
     if search_input.strip().replace(' ',"") == "":
         return (
         format_table_total(current_total),
@@ -497,31 +604,34 @@ async def post(req: Request, search_input:str, search_type:str, current_idx:str,
     
     if search_type == 'semantic':
         q_emb = model.encode([search_input], normalize_embeddings=True).astype("float32")
-        scores, idxs = index.search(q_emb, num_entries+len(current_flat_idx)) # make room for current found.. faiss index cannot exclude
+        scores, idxs = (index if grped else index_li).search(q_emb, num_entries+len(current_flat_idx)) # make room for current found.. faiss index cannot exclude
         idxs, scores = idxs[0], scores[0]
         filtered = [(i, s) for i, s in zip(idxs, scores) if i not in set(current_flat_idx)] # filter out current idxs
         results = []
         new_total = 0
         new_idx = [int(i[0]) for i in filtered]
         for i, s in filtered:
-            row = budget_data.iloc[i].to_dict()
+            row = (budget_data if grped else budget_line_items).iloc[i].to_dict()
             new_total += row.get('Amount')
             results.append({"rank": len(results) + 1, "score": round(float(s), 4)} | row)
     else:
         ## filter indexes
-        results = budget_data.loc[lambda df: (~df.index.isin(current_flat_idx)) & (df['Text'].str.lower().str.contains(search_input))].iloc[:num_entries]
+        results = (budget_data if grped else budget_line_items).loc[lambda df: (~df.index.isin(current_flat_idx)) & (df['Text'].str.lower().str.contains(search_input.lower()))].iloc[:num_entries]
         new_idx=results.index.to_list()
         new_total = results['Amount'].sum()
         results=results.to_dict(orient='records')
         
+    num_new_results = len(new_idx)
     batch_id = f"batch-{uuid.uuid4().hex[:8]}"
     new_idx = current_idx | {batch_id:new_idx}
     updated_total = new_total + current_total
-    
+
+    row_foo = format_table_rows if grped else format_line_item_rows
     return (
-        *format_table_rows(results, batch_id),
+        *row_foo(results, batch_id),
         format_table_total(updated_total),
 
+        ## these two hidden inputs.. carry the information needed, but I am going to swap out the TABLE
         Input(
             type='hidden',
             id='current_total',
@@ -536,13 +646,39 @@ async def post(req: Request, search_input:str, search_type:str, current_idx:str,
             name='current_idx',
             value=json.dumps(new_idx),
             hx_swap_oob='outerHTML'
-        ),
-        
-        Div(id='search-tags', hx_swap_oob='afterbegin')(
-            search_tag(search_input, batch_id, new_total)
+        ),      
+
+        Div(id='dwnld-btn', cls="flex justify-end items-end", hx_swap_oob='innerHTML')(
+            Div(cls='tooltip', data_tip='Download Results!')(
+                A(
+                    svgs.get('download'), 
+                    href=f'/download-results?search_select={search_select}&current_idx={json.dumps(current_idx)}',
+                    target="_blank",
+                    cls="btn btn-sm btn-primary"
+                    )
+                )
         ) if results else None,
         
+        Div(id='search-tags', cls='flex flex-row gap-y-2 gap-x-2 flex-wrap', hx_swap_oob='beforeend')(
+            search_tag(search_input, batch_id, new_total),
+        ) if results else None,
         
+        ## swap in hidden search value to match previous javascript
+        Input(
+            type='hidden',
+            id='search_select_hidden',
+            name='search_select',
+            value=search_select,
+            hx_swap_oob='outerHTML'
+        ),
+        
+        ## swap this in if there is something found in current_idx
+        Select(id='search_select', name='search_select', cls='select',
+            hx_swap_oob="outerHTML",
+            disabled=True                 
+        )(Option(search_select, selected=True)
+        ) if len(current_idx) > 0 or len(new_idx) > 0 else None,    
+      
         Div(id="alerts-layer", hx_swap_oob="afterbegin")(
             Div(cls='alert alert-error')(
                 Span('No results found!'),
@@ -553,23 +689,36 @@ async def post(req: Request, search_input:str, search_type:str, current_idx:str,
                     })()
                 """)
             ),
-        ) if not results else None
+        ) if not results else None,
+        
+     Div(id="alerts-layer", hx_swap_oob="afterbegin")(
+            Div(cls='alert alert-success')(
+                Span(f'{num_new_results} results found!'),
+                Script("""
+                    (async (el = me()) => {
+                    await sleep(2000) 
+                    me(el).fadeOut() 
+                    })()
+                """)
+            ),
+        ) if results else None           
     )
+
 
 @rt('/budget')
 async def get(req: Request):
-    
     current_total=0.0
     current_idx = {}
     rows = {}
-    table = Table(cls="table bg-base-100 rounded-xl shadow-lg w-full")(
+    table = Table(id='big-table', cls="table bg-base-100 rounded-xl shadow-lg w-full")(
         Thead()(
-            Tr()(
+            Tr(id='table-header-row')(
                 Th("BU Name", cls="text-base-content font-semibold"),
                 Th("PS Fund Description", cls="text-base-content font-semibold"),
                 Th("ACFR Name", cls="text-base-content font-semibold"),
+                Th("Category", cls="text-base-content font-semibold"),
                 Th("Year", cls="text-base-content font-semibold"),
-                Th("Num. Entries", cls="text-base-content font-semibold"),
+                Th("Num. Line Items",  id="num-entries-header", cls="text-base-content font-semibold"),
                 Th("Amount", cls="text-base-content font-semibold"),
             )   
         ),
@@ -578,85 +727,176 @@ async def get(req: Request):
     
     search_input = Label(cls="input input-bordered flex items-center gap-1 w-full")(
         svgs.get("mag_glass"),
-        Input(type="text", required=True, name="search_input", placeholder="Search", cls="grow")
+        Input(type="text", required=True, id="search_input", name="search_input", placeholder="Search", cls="grow")
     )
-    
+        
     search_controls = Div(
         cls="flex flex-col items-start gap-2 w-full sm:w-auto"
     )(
-        # Row 1: Radios + number input
         Div(cls="flex flex-row items-center gap-2 w-full sm:w-auto")(
             Div(cls="join")(
                 Div(cls='tooltip', data_tip='Find rows with your exact search text.')(
                     Input(
-                    cls="join-item btn btn-sm",
+                    cls="join-item btn",
                     type="radio",
                     name="search_type",
+                    id='search_radio_kw',
                     value="keyword",
                     aria_label="Keyword",
                     checked=True
                 )),
                 Div(cls='tooltip', data_tip='Find rows with similar meaning to your search text.')(
                     Input(
-                    cls="join-item btn btn-sm",
+                    cls="join-item btn",
                     type="radio",
                     name="search_type",
+                    id='search_radio_sem',
                     value="semantic",
                     aria_label="Semantic"
                 )),
             ),
-            Div(cls='tooltip', data_tip='The number of rows to return.')(
+            Div(cls='tooltip', data_tip='The max number of rows to return.')(
                 Input(
                     type="number",
                     min="1",
                     max="200",
                     value="50",
+                    id='num_entries',
                     name="num_entries",
-                    cls="input input-bordered input-sm w-20"
+                    cls="input input-bordered w-20"
                 )
-            )
+            ),
+            Div(cls='tooltip', data_tip='Using data at line item level may result in slow search queries.')(
+                Select(id='search_select', name='search_select',
+                       cls='select',
+                        hx_get="/update-header",
+                        hx_target="#num-entries-header",
+                        hx_swap="outerHTML",
+                        hx_trigger="change"                   
+                       )(
+                    Option('Grouped'),
+                    Option('Line Item'),
+                )
+            )      
         ),
-
-        # Row 2: Full-width search button
+        
         Button(
             "Search",
-            cls="btn btn-primary btn-sm w-full",   # now appropriate
+            cls="btn btn-primary btn-sm w-full",   
             type="submit",
             hx_post="/budget-search",
             hx_target="#total_row",
             hx_swap="outerHTML",
         )
     )
-
     
     search_grid = Div(
-        cls="grid grid-cols-1 sm:grid-cols-[1fr_auto] items-center gap-3"
+        cls="flex flex-col gap-3 w-full"
     )(
         search_input,
         search_controls
     )
-    
+        
     search_form = Form(id="search-form", cls="w-full")(
         search_grid, 
         Input(type='hidden', id='current_total', name='current_total', value=current_total),
         Input(type='hidden', id='current_idx', name='current_idx', value=json.dumps(current_idx)),
+        Input(type='hidden', id='search_select_hidden', name='search_select', value=current_total),
+        
     ) 
+
+    search_tags_container = Div(id="search-tags", cls='flex flex-row gap-y-2 gap-x-2 flex-wrap')    
+    
+    main_search_layout = Div(
+        cls="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 items-stretch"
+    )(
+        Div(cls="col-span-2 w-full")(search_form),
+        Div(cls="col-start-1 w-full")(search_tags_container),
+        Div(id='dwnld-btn', cls="col-start-2 flex justify-end items-end")
+    )
     return Body()(
-        Div(cls="px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]")(
+        Div(cls="px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px] pb-24")(
             Form(id="feed")(
                 title_bar(sites=False),
                 Div(id="alerts-layer", cls='toast toast-top toast-end fixed z-[9999]'),
                 Div(cls="mx-auto font-sans antialiased h-full w-full")(
                     Div(cls="mx-auto max-w-screen-lg space-y-3")(
-                        search_form,
-                        Div(id="search-tags", cls='flex flex-row'),
-                        table
+                        main_search_layout, 
+                        Div(cls='slide-transition')(table)
                     )
                 )
             )
-        ),
-    )
+        )
+    ) 
+
+@rt('/update-header')
+def get(req: Request, search_select:str, d:dict):
+    if search_select == "Line Item":
+        return Th("Account Description", id="num-entries-header", cls="text-base-content font-semibold")
+    return Th("Num. Line Items", id="num-entries-header", cls="text-base-content font-semibold")
   
+def format_line_item_rows(rows:list, batch_id:str=None):
+    batch_attr = {"data-id": batch_id} if batch_id else {} 
+    return [
+        Tr(cls="hover:bg-base-300", **batch_attr)(
+            Td(row['BU Name'], cls="text-base-content"),
+            Td(row['PS Fund Description'], cls="text-base-content"),
+            Td(row['ACFR Name'], cls="text-base-content"),
+            Td(row['Category'], cls="text-base-content"),
+            Td(row['Account Description'], cls="text-base-content"),
+            Td(row['Year'], cls="text-base-content"),
+            Td(fmt_amount(row["Amount"]), cls="text-base-content text-right font-mono"),
+        )
+        for row in rows
+    ] if rows else []    
+      
+def format_line_item_table(rows: list, total):
+    return (  
+        Table(id='drill-table', cls="table bg-base-100 rounded-xl shadow-lg w-full")(
+            Thead()(
+                Tr()(
+                    Th("BU Name", cls="text-base-content font-semibold"),
+                    Th("PS Fund Description", cls="text-base-content font-semibold"),
+                    Th("ACFR Name", cls="text-base-content font-semibold"),
+                    Th("Category", cls="text-base-content font-semibold"),
+                    Th("Account Description", cls="text-base-content font-semibold"),
+                    Th("Year", cls="text-base-content font-semibold"),
+                    Th("Amount", cls="text-base-content font-semibold"),
+                )   
+            ),
+            Tbody()(*format_line_item_rows(rows), format_table_total(total))
+        )
+    )
+
+@rt("/download-results")
+def get(current_idx:str, search_select:str):
+    current_idx = json.loads(current_idx)
+    current_flat_idx = [item for sublist in current_idx.values() for item in sublist]
+    csv_data = (budget_data if search_select=='Grouped' else budget_line_items).loc[current_flat_idx].to_csv(index=False)
+    filename = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return Response(
+        content=csv_data,
+        media_type='text/csv',
+        headers={"Content-Disposition": f'attachment; filename="IND-Budget-{search_select}-{filename}.csv"'}
+    )
+
+@rt("/drill-down")
+async def get(req: Request, row_idxs:str, d:dict):  
+
+    data_rows = budget_line_items.iloc[json.loads(row_idxs)]
+    total_amount = data_rows['Amount'].sum()
+    
+    ids = ["search_input", "search_radio_kw", "search_radio_sem", "num_entries", "search_select"]
+    js = ";".join([f'document.getElementById("{i}").disabled = true' for i in ids])
+
+    return (
+        Script(js),
+        format_line_item_table(
+            rows=data_rows.to_dict(orient='records'),
+            total=total_amount
+        )
+    )
+        
 @rt('/filter')
 async def post(req: Request):
     form = await req.form()
@@ -729,7 +969,7 @@ def get(id:int, req: Request):
 
 @rt('/where-is-diego')
 def get(req:Request):
-    return(
+    return (
         Body()(
             Div(cls='px-5 bg-base-100 min-h-screen w-full bg-[radial-gradient(#979797_1px,transparent_1px)] [background-size:24px_24px]')(
                 title_bar(req=req),
@@ -742,53 +982,7 @@ def get(req:Request):
         Script(src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'),
         Script(src='/static/js/leaf.js'),
     )
-
-
-@rt('/delete-test')
-def post(batch_id:str):
-    ## but I also need to supply the BATCH SUM, which I have! then I 
-    return Script(f'document.querySelectorAll(\'tr[data-id="{batch_id}"]\').forEach(e => e.remove());')
-
-@rt('/test')
-def get():
-    return (
-        Form(id='delete-form', cls='p-5')(
-            Table()(
-                Thead()(
-                    Tr(
-                        Th('Select'),
-                        Th('ID'),
-                        Th('Data')
-                    )
-                ),
-                Tbody()(
-                    Tr(data_id='gs10')(
-                        Td('101'),
-                        Td('Item A')
-                    ),
-                    Tr(data_id='gs10')(
-                        Td('103'),
-                        Td('Item C')
-                    ),                
-                    Tr(data_id='fasd3')(
-                        Td('102'),
-                        Td('Item B')
-                    )
-                )
-            ),
-            Div(
-                'Delete Rows',
-                cls='btn',
-                hx_post='/delete-test',
-                hx_swap='outerHTML',
-                hx_target='this',
-                hx_vals={'batch_id':"fasd3"}
-            )
-        )
-    )
-
-    
-    
+ 
 
 @rt('/diego-location')
 def post(d:DiegoLocation):
