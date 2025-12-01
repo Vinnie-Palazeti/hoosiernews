@@ -20,25 +20,17 @@ import uuid
 from starlette.responses import Response
 load_dotenv()
 
-
-## how will github actions work?
-## push to github
-## connect to server
-## rsync code
-## reset systemd
-## maybe always uv sync?
-
-
 # https://www.purdueexponent.org/
-# http://mywabashvalley.com/news/local-news/
+# http://mywabashvalley.com/news/local-news/ ## articles should work
 # https://indianacitizen.org/
 # https://fox59.com/
 # https://www.journalgazette.net/local/
 
-
 ## load local data ##
 BASE_DIR = Path(__file__).resolve().parent
-model = SentenceTransformer( "all-MiniLM-L6-v2")
+# model = SentenceTransformer( "all-MiniLM-L6-v2")
+# model.save("static/assets/all-MiniLM-L6-v2-local")
+model = SentenceTransformer("static/assets/all-MiniLM-L6-v2-local")
 
 index = faiss.read_index(str(BASE_DIR / "static" / "data" / "indiana_budget.index"))
 index_li = faiss.read_index(str(BASE_DIR / "static" / "data" / "indiana_budget_li.index"))
@@ -127,23 +119,16 @@ headers=[
 
     ### testing... ###
     # Script(src="https://unpkg.com/htmx.org@next/dist/htmx.min.js"),
-    Script(src='https://cdn.jsdelivr.net/npm/theme-change@2.5.0/index.min.js'),
     # # Link(href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', rel='stylesheet'), 
-    Link(href='https://cdn.jsdelivr.net/npm/daisyui@5', rel='stylesheet', type='text/css'),
-    Script(src='https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4'),
     ##################
     
     ## this breaks if I try to use the newest cdn!
     ## I can't use the cdn because when I use the back the page refreshes! something to do the transitions?
     Script(src="/static/js/htmx.min.js"),
-
     Script(src="/static/js/surreal.js"),
-    # Script(src='/static/js/theme-change.js'),
-    # # I had to move the market images to the static/css file because I believe the leaflet.min.css went looking for them there...
+    # I had to move the market images to the static/css file because I believe the leaflet.min.css went looking for them there...
     Link(href='/static/css/leaflet.min.css', rel='stylesheet'),
-    # Link(rel="stylesheet", href="/static/css/output.css", type="text/css"), 
-    
-    
+    Link(rel="stylesheet", href="/static/css/output.css", type="text/css"), 
     Link(rel="stylesheet", href="/static/css/custom.css", type="text/css"), 
     Link(rel='icon', href='/static/assets/state.svg', type='image/svg+xml'),    
     

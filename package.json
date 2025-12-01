@@ -1,0 +1,9 @@
+{
+  "name": "tailwind-builder",
+  "private": true,
+  "dependencies": {
+    "tailwindcss": "^4.1.17",
+    "@tailwindcss/cli": "latest",
+    "daisyui": "latest"
+  }
+}

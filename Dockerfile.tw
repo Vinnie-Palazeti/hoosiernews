@@ -1,0 +1,15 @@
+# Use a minimal Node image
+FROM node:alpine
+
+# Set the working directory for the container
+WORKDIR /app
+
+# Copy package files first to install deps (they won't be mounted over)
+COPY package.json ./
+
+# Install Tailwind (and whatever plugins you want)
+RUN npm install
+RUN npm install -D daisyui@latest
+
+# Default command (override with docker run if needed)
+CMD ["npx", "tailwindcss", "-i", "./static/css/input.css", "-o", "./static/css/output.css", "--watch"]
