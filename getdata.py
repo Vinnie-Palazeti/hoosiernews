@@ -225,13 +225,15 @@ def parse_feed_entries(feed: feedparser.FeedParserDict, length:int=None) -> List
     if not feed or not feed.entries:
         return entries
     site = NAME_MAP.get(getattr(feed.feed, 'title', ''), getattr(feed.feed, 'title', 'Unknown'))
-    
     if len(feed.entries) > 0:
-        if "fox59" in feed.entries[0].get('link'): # lol
+        test_link = feed.entries[0].get('link')
+        if "fox59" in test_link: # lol
             site='Fox 59'
-        if 'wrtv' in feed.entries[0].get('link'):
+        if 'wrtv' in test_link:
             site='WRTV'
-            
+        if 'dailyjournal' in test_link:
+            site='Daily Journal'
+
     for entry in feed.entries:
         published = getattr(entry, 'published', '') or getattr(entry, 'updated', '')
         try:
@@ -542,7 +544,7 @@ def fetch_indystar() -> List[Dict[str, Any]]:
     soup = BeautifulSoup(resp.text, "html.parser")
     stories = [a for a in soup.find_all("a", href=True) if 'story' in a['href']]
     results = []
-    breakpoint()
+
     for a in stories:
         href = a['href']
         try:
@@ -807,7 +809,9 @@ NAME_MAP = {
     "Jesse <jesse@jesseforindy.com>":"Jesse Brown",
     "Indiana Public Media - WFIU/WTIU":"Indiana Public Media",
     "Indianapolis Local News":'WRTV',
-    "Featured News - THE INDIANA CITIZEN": "The Indiana Citizen"
+    "Featured News - THE INDIANA CITIZEN": "The Indiana Citizen",
+    "Local News Archives - Daily Journal": "Daily Journal",
+    "Local News | MyWabashValley.com": "My Wabash Valley"
 }
 
 RSS_FEEDS = [
@@ -820,7 +824,9 @@ RSS_FEEDS = [
     "https://www.ipm.org/index.rss",
     "https://www.wrtv.com/news/local-news.rss",
     "https://fox59.com/indiana-news/feed/",
-    "https://indianacitizen.org/category/featured-news/feed/"
+    "https://indianacitizen.org/category/featured-news/feed/",
+    "https://dailyjournal.net/category/local-news/feed/",
+    "https://www.mywabashvalley.com/news/local-news/feed/"
 ]
 
 foos = {
@@ -875,7 +881,6 @@ def main():
         try:
             feed = fetch_rss_feed(url)
             all_entries.extend(parse_feed_entries(feed) or [])
-            
         except Exception as e:
             logger.error(f"{url} failed:\n{e}")
             continue

@@ -20,11 +20,6 @@ import uuid
 from starlette.responses import Response
 load_dotenv()
 
-
-# http://mywabashvalley.com/news/local-news/ ## articles should work
-
-
-
 ## load local data ##
 BASE_DIR = Path(__file__).resolve().parent
 # model = SentenceTransformer( "all-MiniLM-L6-v2")
@@ -544,6 +539,8 @@ def post(batch_id:str, batch_total:str, current_total:str, current_idx:str, sear
         ) if len(current_idx) == 0 else None,
     )
   
+  
+# def search_line_items():
 
 @rt('/budget-search')
 async def post(req: Request, 
@@ -688,11 +685,17 @@ async def post(req: Request,
     )
 
 
+## basically need a functi
+
 @rt('/budget')
 async def get(req: Request):
+    
+    
     current_total=0.0
     current_idx = {}
     rows = {}
+    
+    
     table = Table(id='big-table', cls="table bg-base-100 rounded-xl shadow-lg w-full")(
         Thead()(
             Tr(id='table-header-row')(
