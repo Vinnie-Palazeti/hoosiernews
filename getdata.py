@@ -212,25 +212,6 @@ def send_summary_email(body: str):
         smtp.login("vinnie.palazeti@indystats.com", os.getenv("GMAIL_APP_PASSWORD"))
         smtp.send_message(msg)
 
-# Mapping names
-NAME_MAP = {
-    "www.tribstar.com - RSS Results":"Tribstar",
-    "Current Publishing":'YouAreCurrent',
-    "Jesse <jesse@jesseforindy.com>":"Jesse Brown",
-    "Indiana Public Media - WFIU/WTIU":"Indiana Public Media",
-    "Indianapolis Local News":'WRTV'
-}
-
-RSS_FEEDS = [
-    'https://www.hoosieragtoday.com/feed/',
-    'https://indianacapitalchronicle.com/feed/',
-    'https://mirrorindy.org/feed/',
-    'https://indypolitics.org/feed/',
-    'https://indianapolisrecorder.com/feed/',
-    'https://youarecurrent.com/feed/',
-    "https://www.ipm.org/index.rss",
-    "https://www.wrtv.com/news/local-news.rss"
-]
 
 @retry(tries=3, delay=2)
 def fetch_rss_feed(url: str) -> feedparser.FeedParserDict:    
@@ -240,11 +221,17 @@ def fetch_rss_feed(url: str) -> feedparser.FeedParserDict:
     return feedparser.parse(response.content)
 
 def parse_feed_entries(feed: feedparser.FeedParserDict, length:int=None) -> List[Dict[str, Any]]:
-    
     entries = []
     if not feed or not feed.entries:
         return entries
     site = NAME_MAP.get(getattr(feed.feed, 'title', ''), getattr(feed.feed, 'title', 'Unknown'))
+    
+    if len(feed.entries) > 0:
+        if "fox59" in feed.entries[0].get('link'): # lol
+            site='Fox 59'
+        if 'wrtv' in feed.entries[0].get('link'):
+            site='WRTV'
+            
     for entry in feed.entries:
         published = getattr(entry, 'published', '') or getattr(entry, 'updated', '')
         try:
@@ -470,8 +457,6 @@ def fetch_indianalawyer():
     logger.info("found %d entries for Indiana Lawyer", len(results))
     return results
 
-
-
 @retry(tries=3, delay=2)
 def fetch_courier():
     url="https://www.courierpress.com/news/local-news/"
@@ -499,7 +484,6 @@ def fetch_courier():
         })
     logger.info(f"found {len(results)} entries for Courier")
     return results
-
 
 @retry(tries=3, delay=2)
 def fetch_tribstar() -> List[Dict[str, Any]]:
@@ -558,6 +542,7 @@ def fetch_indystar() -> List[Dict[str, Any]]:
     soup = BeautifulSoup(resp.text, "html.parser")
     stories = [a for a in soup.find_all("a", href=True) if 'story' in a['href']]
     results = []
+    breakpoint()
     for a in stories:
         href = a['href']
         try:
@@ -721,6 +706,53 @@ def fetch_nwi_business() -> List[Dict[str, Any]]:
     logger.info(f"found {len(results)} entries for NWI Biz")    
     return results
 
+@retry(tries=3, delay=2)
+def fetch_journal_gazette() -> List[Dict[str, Any]]:
+    url = "https://www.journalgazette.net/local/"
+    logger.info("Fetching Journal Gazette: %s", url)
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    stories = [a for a in soup.find_all("article")][:10]
+    
+    results = []
+    found = []
+    
+    for story in stories:
+        link_tag = story.find("a", href=True)
+        link = link_tag["href"] if link_tag else None
+        title = story.find("h2")
+        if not title:
+            title = story.find('h3')
+        title = title.get_text(strip=True) if title else None
+        p_tag = story.find("p")
+        summary = p_tag.get_text(strip=True) if p_tag else None
+        date_ = story.find('time').get('datetime')
+        
+        if date_:
+            date_ = date_[:10]
+        if not title:
+            continue
+        if not link:
+            continue
+        else:
+            found.append(link)
+
+        results.append({
+            'date': date_ or datetime.now().strftime('%Y-%m-%d'),
+            'site': 'Journal Gazette',
+            'title': title,
+            'summary': summary or title,
+            'url': link,
+            'content': None,
+            'email': False,
+            'created_at': datetime.now().isoformat()
+        })
+
+    logger.info(f"found {len(results)} entries for Journal Gazette")    
+    return results
+
+
 def setup_ssh_client():
     """Set up SSH client to connect to your server"""
     ssh_dir = pathlib.Path('/root/.ssh')
@@ -769,6 +801,27 @@ def save_jsonl(entries, out_path: pathlib.Path):
             f.write(orjson.dumps(row, default=_json_default))
             f.write(b"\n")
 
+NAME_MAP = {
+    "www.tribstar.com - RSS Results":"Tribstar",
+    "Current Publishing":'YouAreCurrent',
+    "Jesse <jesse@jesseforindy.com>":"Jesse Brown",
+    "Indiana Public Media - WFIU/WTIU":"Indiana Public Media",
+    "Indianapolis Local News":'WRTV',
+    "Featured News - THE INDIANA CITIZEN": "The Indiana Citizen"
+}
+
+RSS_FEEDS = [
+    'https://www.hoosieragtoday.com/feed/',
+    'https://indianacapitalchronicle.com/feed/',
+    'https://mirrorindy.org/feed/',
+    'https://indypolitics.org/feed/',
+    'https://indianapolisrecorder.com/feed/',
+    'https://youarecurrent.com/feed/',
+    "https://www.ipm.org/index.rss",
+    "https://www.wrtv.com/news/local-news.rss",
+    "https://fox59.com/indiana-news/feed/",
+    "https://indianacitizen.org/category/featured-news/feed/"
+]
 
 foos = {
     'indystar':fetch_indystar,
@@ -782,6 +835,7 @@ foos = {
     'indiana_lawyer': fetch_indianalawyer,
     'inside_indiana_business': fetch_inside_indiana_business,
     'nwi_business': fetch_nwi_business,
+    'journal_gazette':fetch_journal_gazette
 }
 
 # from dotenv import load_dotenv
@@ -816,21 +870,24 @@ app = modal.App("hoosier-news-getdata", image=image)
 def main():
     logger.info(f"starting...")
     all_entries: List[Dict[str, Any]] = []
+    
     for url in RSS_FEEDS:
         try:
             feed = fetch_rss_feed(url)
             all_entries.extend(parse_feed_entries(feed) or [])
+            
         except Exception as e:
             logger.error(f"{url} failed:\n{e}")
             continue
+        
     for site, fetch_fn in foos.items():
         try:
             all_entries.extend(fetch_fn())
         except Exception as e:
             logger.error(f"{site} failed:\n{e}")
-            
-    # breakpoint()
+    
     # inserted = upsert_posts('data.db', all_entries)
+    # breakpoint()
             
     fn = f"entries-{datetime.now().isoformat()}.jsonl.gz"
     tmp_path = pathlib.Path(tempfile.gettempdir()) / fn   

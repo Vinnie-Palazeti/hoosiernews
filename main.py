@@ -20,11 +20,10 @@ import uuid
 from starlette.responses import Response
 load_dotenv()
 
-# https://www.purdueexponent.org/
+
 # http://mywabashvalley.com/news/local-news/ ## articles should work
-# https://indianacitizen.org/
-# https://fox59.com/
-# https://www.journalgazette.net/local/
+
+
 
 ## load local data ##
 BASE_DIR = Path(__file__).resolve().parent
@@ -203,7 +202,6 @@ headers=[
     """)   
 ]
 
-# app = FastHTMLWithLiveReload(title='Hoosier News', before=attribution_before, hdrs=headers, default_hdrs=False)
 app = FastHTML(title='Hoosier News', before=attribution_before, hdrs=headers, default_hdrs=False)
 app.add_middleware(SessionMiddleware, secret_key=os.environ['SESSION_SECRET'])
 
@@ -977,9 +975,8 @@ def post(d:DiegoLocation):
     return H1('Thank you for spotting Diego!', cls='text-5xl')
 
 if __name__ == "__main__":
-    # import uvicorn
-    # uvicorn.run("main:app", host="127.0.0.1", port=8000)
-    serve(host="127.0.0.1", port=8000)
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=8000)
     
 
 

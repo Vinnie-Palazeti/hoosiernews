@@ -121,6 +121,31 @@ svgs = {
         Path(d='m17 2-5 5-5-5'),
         Rect(width='20', height='15', x='2', y='7', rx='2')
     ),
+    "The Indiana Citizen": Svg(
+        cls='size-10 sm:size-12',
+        width='24', height='24', viewbox='0 0 24 24', fill='none', xmlns='http://www.w3.org/2000/svg')(
+        Path(d='M10 8.94648C10.0112 7.71996 10.5211 6.32069 11.6575 5.3729C14.5106 2.99353 21.2591 6.95603 20.8207 2C24.4804 7.64147 18.4776 7.81928 18.2152 9.83766C18.0664 10.9826 20.1591 11.6114 21.3687 10.6027C21.1245 11.4521 19.5 14.8057 15 13.8206', stroke='#141B34', stroke_width='1.5', stroke_linecap='round', stroke_linejoin='round'),
+        Path(d='M8.95445 12.0276C7.83074 10.9039 8.01032 7 8.01032 7L17 15.9897C17 15.9897 13.0961 16.1678 11.9724 15.0441', stroke='#141B34', stroke_width='1.5', stroke_linecap='round', stroke_linejoin='round'),
+        Path(d='M8.14822 12L2.24774 19.983C1.87554 20.4866 1.92775 21.1867 2.37054 21.6295C2.81333 22.0722 3.51343 22.1245 4.01701 21.7523L12 15.8518', stroke='#141B34', stroke_width='1.5', stroke_linecap='round', stroke_linejoin='round'),
+        Path(d='M7 10L14 17', stroke='#141B34', stroke_width='1.5', stroke_linecap='round', stroke_linejoin='round')
+    ),
+    
+    "Fox 59":Svg(xmlns='http://www.w3.org/2000/svg', viewbox='0 0 256 256', cls='size-10 sm:size-12')(
+        Rect(width='256', height='256', fill='none'),
+        Rect(x='32', y='72', width='192', height='136', rx='8', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Polyline(points='80 24 128 72 176 24', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Circle(cx='188', cy='116', r='12'),
+        Circle(cx='188', cy='164', r='12'),
+        Line(x1='152', y1='208', x2='152', y2='72', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16')
+    ),
+    
+    "Journal Gazette":Svg(xmlns='http://www.w3.org/2000/svg', viewbox='0 0 256 256', cls='size-10 sm:size-12')(
+        Rect(width='256', height='256', fill='none'),
+        Line(x1='96', y1='112', x2='176', y2='112', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Line(x1='96', y1='144', x2='176', y2='144', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Path(d='M32,200a16,16,0,0,0,16-16V64a8,8,0,0,1,8-8H216a8,8,0,0,1,8,8V184a16,16,0,0,1-16,16Z', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16'),
+        Path(d='M32,200a16,16,0,0,1-16-16V88', fill='none', stroke='currentColor', stroke_linecap='round', stroke_linejoin='round', stroke_width='16')
+    ),    
     
 
     'Sun': Svg(xmlns='http://www.w3.org/2000/svg', viewBox='0 0 24 24', cls='swap-off h-10 w-10 fill-current')(
